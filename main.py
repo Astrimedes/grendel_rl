@@ -1,60 +1,20 @@
 #!/usr/bin/env python3
- 
+# This code started from the excellent python roguelike tutorial at: http://www.roguebasin.com/index.php?title=Roguelike_Tutorial,_using_python3%2Btdl #
+
 import tdl
-from tcod import image_load
+import tcod
 from random import randint
-import colors
+
 import math
 import textwrap
 import shelve
+
+# defined constants
+import constants
+# defined colors
+import colors 
  
-#actual size of the window
-SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 50
- 
-#size of the map
-MAP_WIDTH = 80
-MAP_HEIGHT = 43
- 
-#sizes and coordinates relevant for the GUI
-BAR_WIDTH = 20
-PANEL_HEIGHT = 7
-PANEL_Y = SCREEN_HEIGHT - PANEL_HEIGHT
-MSG_X = BAR_WIDTH + 2
-MSG_WIDTH = SCREEN_WIDTH - BAR_WIDTH - 2
-MSG_HEIGHT = PANEL_HEIGHT - 1
-INVENTORY_WIDTH = 50
- 
-#parameters for dungeon generator
-ROOM_MAX_SIZE = 10
-ROOM_MIN_SIZE = 6
-MAX_ROOMS = 30
-MAX_ROOM_MONSTERS = 3
-MAX_ROOM_ITEMS = 2
- 
-#spell values
-HEAL_AMOUNT = 4
-LIGHTNING_DAMAGE = 20
-LIGHTNING_RANGE = 5
-CONFUSE_RANGE = 8
-CONFUSE_NUM_TURNS = 10
-FIREBALL_RADIUS = 3
-FIREBALL_DAMAGE = 12
- 
- 
-FOV_ALGO = 'BASIC'
-FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 10
- 
-LIMIT_FPS = 20  #20 frames-per-second maximum
- 
- 
-color_dark_wall = (0, 0, 100)
-color_light_wall = (130, 110, 50)
-color_dark_ground = (50, 50, 150)
-color_light_ground = (200, 180, 50)
- 
- 
+### Class Definitions ###
 class Tile:
     #a tile of the map and its properties
     def __init__(self, blocked, block_sight=None):
@@ -210,10 +170,11 @@ class BasicMonster:
             #close enough, attack! (if the player is still alive.)
             elif player.fighter.hp > 0:
                 monster.fighter.attack(player)
+        print('monster took turn')
  
 class ConfusedMonster:
     #AI for a temporarily confused monster (reverts to previous AI after a while).
-    def __init__(self, old_ai, num_turns=CONFUSE_NUM_TURNS):
+    def __init__(self, old_ai, num_turns=constants.CONFUSE_NUM_TURNS):
         self.old_ai = old_ai
         self.num_turns = num_turns
  
@@ -261,54 +222,8 @@ class Item:
                 inventory.remove(self.owner)  #destroy after use, unless it was 
                                               #cancelled for some reason
  
-def is_blocked(x, y):
-    #first test the map tile
-    if my_map[x][y].blocked:
-        return True
- 
-    #now check for any blocking objects
-    for obj in objects:
-        if obj.blocks and obj.x == x and obj.y == y:
-            return True
- 
-    return False
- 
-def create_room(room):
-    global my_map
-    #go through the tiles in the rectangle and make them passable
-    for x in range(room.x1 + 1, room.x2):
-        for y in range(room.y1 + 1, room.y2):
-            my_map[x][y].blocked = False
-            my_map[x][y].block_sight = False
- 
-def create_h_tunnel(x1, x2, y):
-    global my_map
-    for x in range(min(x1, x2), max(x1, x2) + 1):
-        my_map[x][y].blocked = False
-        my_map[x][y].block_sight = False
- 
-def create_v_tunnel(y1, y2, x):
-    global my_map
-    #vertical tunnel
-    for y in range(min(y1, y2), max(y1, y2) + 1):
-        my_map[x][y].blocked = False
-        my_map[x][y].block_sight = False
- 
- 
-def is_visible_tile(x, y):
-    global my_map
- 
-    if x >= MAP_WIDTH or x < 0:
-        return False
-    elif y >= MAP_HEIGHT or y < 0:
-        return False
-    elif my_map[x][y].blocked == True:
-        return False
-    elif my_map[x][y].block_sight == True:
-        return False
-    else:
-        return True
- 
+
+### MAP CREATION ###
 def make_map():
     global my_map, objects
  
@@ -317,19 +232,19 @@ def make_map():
  
     #fill map with "blocked" tiles
     my_map = [[ Tile(True)
-        for y in range(MAP_HEIGHT) ]
-            for x in range(MAP_WIDTH) ]
+        for y in range(constants.MAP_HEIGHT) ]
+            for x in range(constants.MAP_WIDTH) ]
  
     rooms = []
     num_rooms = 0
  
-    for r in range(MAX_ROOMS):
+    for r in range(constants.MAX_ROOMS):
         #random width and height
-        w = randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
-        h = randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
+        w = randint(constants.ROOM_MIN_SIZE, constants.ROOM_MAX_SIZE)
+        h = randint(constants.ROOM_MIN_SIZE, constants.ROOM_MAX_SIZE)
         #random position without going out of the boundaries of the map
-        x = randint(0, MAP_WIDTH-w-1)
-        y = randint(0, MAP_HEIGHT-h-1)
+        x = randint(0, constants.MAP_WIDTH-w-1)
+        y = randint(0, constants.MAP_HEIGHT-h-1)
  
         #"Rect" class makes rectangles easier to work with
         new_room = Rect(x, y, w, h)
@@ -378,10 +293,31 @@ def make_map():
             #finally, append the new room to the list
             rooms.append(new_room)
             num_rooms += 1
+
+def create_h_tunnel(x1, x2, y):
+    global my_map
+    for x in range(min(x1, x2), max(x1, x2) + 1):
+        my_map[x][y].blocked = False
+        my_map[x][y].block_sight = False
  
+def create_v_tunnel(y1, y2, x):
+    global my_map
+    #vertical tunnel
+    for y in range(min(y1, y2), max(y1, y2) + 1):
+        my_map[x][y].blocked = False
+        my_map[x][y].block_sight = False
+        
+def create_room(room):
+    global my_map
+    #go through the tiles in the rectangle and make them passable
+    for x in range(room.x1 + 1, room.x2):
+        for y in range(room.y1 + 1, room.y2):
+            my_map[x][y].blocked = False
+            my_map[x][y].block_sight = False
+            
 def place_objects(room):
     #choose random number of monsters
-    num_monsters = randint(0, MAX_ROOM_MONSTERS)
+    num_monsters = randint(0, constants.MAX_ROOM_MONSTERS)
  
     for i in range(num_monsters):
         #choose random spot for this monster
@@ -411,7 +347,7 @@ def place_objects(room):
             objects.append(monster)
  
     #choose random number of items
-    num_items = randint(0, MAX_ROOM_ITEMS)
+    num_items = randint(0, constants.MAX_ROOM_ITEMS)
  
     for i in range(num_items):
         #choose random spot for this item
@@ -451,7 +387,37 @@ def place_objects(room):
  
             objects.append(item)
             item.send_to_back()  #items appear below other objects
+
+            
+### MAP QUERIES ###
+def is_visible_tile(x, y):
+    global my_map
  
+    if x >= constants.MAP_WIDTH or x < 0:
+        return False
+    elif y >= constants.MAP_HEIGHT or y < 0:
+        return False
+    elif my_map[x][y].blocked == True:
+        return False
+    elif my_map[x][y].block_sight == True:
+        return False
+    else:
+        return True
+
+def is_blocked(x, y):
+    #first test the map tile
+    if my_map[x][y].blocked:
+        return True
+ 
+    #now check for any blocking objects
+    for obj in objects:
+        if obj.blocks and obj.x == x and obj.y == y:
+            return True
+ 
+    return False
+
+
+### RENDERING ###
 def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
     #render a bar (HP, experience, etc). first calculate the width of the bar
     bar_width = int(float(value) / maximum * total_width)
@@ -468,18 +434,6 @@ def render_bar(x, y, total_width, name, value, maximum, bar_color, back_color):
     x_centered = x + (total_width-len(text))//2
     panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
  
-def get_names_under_mouse():
- 
-    #return a string with the names of all objects under the mouse
-    (x, y) = mouse_coord
- 
-    #create a list with the names of all objects at the mouse's coordinates and in FOV
-    names = [obj.name for obj in objects
-        if obj.x == x and obj.y == y and (obj.x, obj.y) in visible_tiles]
- 
-    names = ', '.join(names)  #join the names, separated by commas
-    return names.capitalize()
- 
 def render_all():
     global fov_recompute
     global visible_tiles
@@ -488,13 +442,13 @@ def render_all():
         fov_recompute = False
         visible_tiles = tdl.map.quickFOV(player.x, player.y,
                                          is_visible_tile,
-                                         fov=FOV_ALGO,
-                                         radius=TORCH_RADIUS,
-                                         lightWalls=FOV_LIGHT_WALLS)
+                                         fov=constants.FOV_ALGO,
+                                         radius=constants.TORCH_RADIUS,
+                                         lightWalls=constants.FOV_LIGHT_WALLS)
  
         #go through all tiles, and set their background color according to the FOV
-        for y in range(MAP_HEIGHT):
-            for x in range(MAP_WIDTH):
+        for y in range(constants.MAP_HEIGHT):
+            for x in range(constants.MAP_WIDTH):
                 visible = (x, y) in visible_tiles
                 wall = my_map[x][y].block_sight
                 if not visible:
@@ -502,17 +456,16 @@ def render_all():
                     #if it's explored
                     if my_map[x][y].explored:
                         if wall:
-                            con.draw_char(x, y, None, fg=None, bg=color_dark_wall)
+                            con.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
                         else:
-                            con.draw_char(x, y, None, fg=None, bg=color_dark_ground)
+                            con.draw_char(x, y, None, fg=None, bg=constants.color_dark_ground)
                 else:
                     if wall:
-                        con.draw_char(x, y, None, fg=None, bg=color_light_wall)
+                        con.draw_char(x, y, None, fg=None, bg=constants.color_light_wall)
                     else:
-                        con.draw_char(x, y, None, fg=None, bg=color_light_ground)
+                        con.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
                     #since it's visible, explore it
                     my_map[x][y].explored = True
- 
  
     #draw all objects in the list
     for obj in objects:
@@ -520,7 +473,7 @@ def render_all():
             obj.draw()
     player.draw()
     #blit the contents of "con" to the root console and present it
-    root.blit(con, 0, 0, MAP_WIDTH, MAP_HEIGHT, 0, 0)
+    root.blit(con, 0, 0, constants.MAP_WIDTH, constants.MAP_HEIGHT, 0, 0)
  
     #prepare to render the GUI panel
     panel.clear(fg=colors.white, bg=colors.black)
@@ -528,31 +481,38 @@ def render_all():
     #print the game messages, one line at a time
     y = 1
     for (line, color) in game_msgs:
-        panel.draw_str(MSG_X, y, line, bg=None, fg=color)
+        panel.draw_str(constants.MSG_X, y, line, bg=None, fg=color)
         y += 1
  
     #show the player's stats
-    render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
+    render_bar(1, 1, constants.BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
         colors.light_red, colors.darker_red)
  
     #display names of objects under the mouse
     panel.draw_str(1, 0, get_names_under_mouse(), bg=None, fg=colors.light_gray)
  
     #blit the contents of "panel" to the root console
-    root.blit(panel, 0, PANEL_Y, SCREEN_WIDTH, PANEL_HEIGHT, 0, 0)
- 
+    root.blit(panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
+
+    
+### MESSAGES LOG ###
 def message(new_msg, color = colors.white):
     #split the message if necessary, among multiple lines
-    new_msg_lines = textwrap.wrap(new_msg, MSG_WIDTH)
+    new_msg_lines = textwrap.wrap(new_msg, constants.MSG_WIDTH)
  
     for line in new_msg_lines:
         #if the buffer is full, remove the first line to make room for the new one
-        if len(game_msgs) == MSG_HEIGHT:
+        if len(game_msgs) == constants.MSG_HEIGHT:
             del game_msgs[0]
  
         #add the new line as a tuple, with the text and the color
         game_msgs.append((line, color))
- 
+        
+def msgbox(text, width=50):
+    menu(text, [], width)  #use menu() as a sort of "message box"
+
+
+### FIGHTER ACTIONS ###
 def player_move_or_attack(dx, dy):
     global fov_recompute
  
@@ -573,77 +533,34 @@ def player_move_or_attack(dx, dy):
     else:
         player.move(dx, dy)
         fov_recompute = True
- 
+
 def player_wait():
-	message('You wait.')
+    message('You wait.')
+    
+def player_death(player):
+    #the game ended!
+    global game_state
+    message('You died!', colors.red)
+    game_state = 'dead'
  
-def menu(header, options, width):
-    if len(options) > 26:
-        raise ValueError ('Cannot have a menu with more than 26 options.')
+    #for added effect, transform the player into a corpse!
+    player.char = '%'
+    player.color = colors.dark_red
  
-    #calculate total height for the header (after textwrap) and one line per option
-    header_wrapped = textwrap.wrap(header, width)
-    header_height = len(header_wrapped)
-    if header == '':
-        header_height = 0
-    height = len(options) + header_height
- 
-    #create an off-screen console that represents the menu's window
-    window = tdl.Console(width, height)
- 
-    #print the header, with wrapped text
-    window.draw_rect(0, 0, width, height, None, fg=colors.white, bg=None)
-    for i, line in enumerate(header_wrapped):
-        window.draw_str(0, 0+i, header_wrapped[i])
- 
-    #print all the options
-    y = header_height
-    letter_index = ord('a')
-    for option_text in options:
-        text = '(' + chr(letter_index) + ') ' + option_text
-        window.draw_str(0, y, text, bg=None)
-        y += 1
-        letter_index += 1
- 
-    #blit the contents of "window" to the root console
-    x = SCREEN_WIDTH//2 - width//2
-    y = SCREEN_HEIGHT//2 - height//2
-    root.blit(window, x, y, width, height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
- 
-    #present the root console to the player and wait for a key-press
-    tdl.flush()
-    key = tdl.event.key_wait()
-    key_char = key.char
-    if key_char == '':
-        key_char = ' ' # placeholder
- 
-    if key.key == 'ENTER' and key.alt:
-        #Alt+Enter: toggle fullscreen
-        tdl.set_fullscreen(not tdl.get_fullscreen())
- 
-    #convert the ASCII code to an index; if it corresponds to an option, return it
-    index = ord(key_char) - ord('a')
-    if index >= 0 and index < len(options):
-        return index
-    return None
- 
-def inventory_menu(header):
-    #show a menu with each item of the inventory as an option
-    if len(inventory) == 0:
-        options = ['Inventory is empty.']
-    else:
-        options = [item.name for item in inventory]
- 
-    index = menu(header, options, INVENTORY_WIDTH)
- 
-    #if an item was chosen, return it
-    if index is None or len(inventory) == 0:
-        return None
-    return inventory[index].item
- 
-def msgbox(text, width=50):
-    menu(text, [], width)  #use menu() as a sort of "message box"
- 
+def monster_death(monster):
+    #transform it into a nasty corpse! it doesn't block, can't be
+    #attacked and doesn't move
+    message(monster.name.capitalize() + ' is dead!', colors.orange)
+    monster.char = '%'
+    monster.color = colors.dark_red
+    monster.blocks = False
+    monster.fighter = None
+    monster.ai = None
+    monster.name = 'remains of ' + monster.name
+    monster.send_to_back()
+
+
+### PLAYER INPUT ###
 def handle_keys():
     global playerx, playery
     global fov_recompute
@@ -720,29 +637,77 @@ def handle_keys():
                     chosen_item.drop()
  
             return 'didnt-take-turn'
+
+
+### MENU WITH INPUT ###
+def menu(header, options, width):
+    if len(options) > 26:
+        raise ValueError ('Cannot have a menu with more than 26 options.')
  
-def player_death(player):
-    #the game ended!
-    global game_state
-    message('You died!', colors.red)
-    game_state = 'dead'
+    #calculate total height for the header (after textwrap) and one line per option
+    header_wrapped = textwrap.wrap(header, width)
+    header_height = len(header_wrapped)
+    if header == '':
+        header_height = 0
+    height = len(options) + header_height
  
-    #for added effect, transform the player into a corpse!
-    player.char = '%'
-    player.color = colors.dark_red
+    #create an off-screen console that represents the menu's window
+    window = tdl.Console(width, height)
  
-def monster_death(monster):
-    #transform it into a nasty corpse! it doesn't block, can't be
-    #attacked and doesn't move
-    message(monster.name.capitalize() + ' is dead!', colors.orange)
-    monster.char = '%'
-    monster.color = colors.dark_red
-    monster.blocks = False
-    monster.fighter = None
-    monster.ai = None
-    monster.name = 'remains of ' + monster.name
-    monster.send_to_back()
+    #print the header, with wrapped text
+    window.draw_rect(0, 0, width, height, None, fg=colors.white, bg=None)
+    for i, line in enumerate(header_wrapped):
+        window.draw_str(0, 0+i, header_wrapped[i])
  
+    #print all the options
+    y = header_height
+    letter_index = ord('a')
+    for option_text in options:
+        text = '(' + chr(letter_index) + ') ' + option_text
+        window.draw_str(0, y, text, bg=None)
+        y += 1
+        letter_index += 1
+ 
+    #blit the contents of "window" to the root console
+    x = constants.SCREEN_WIDTH//2 - width//2
+    y = constants.SCREEN_HEIGHT//2 - height//2
+    root.blit(window, x, y, width, height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
+ 
+    #present the root console to the player and wait for a key-press
+    tdl.flush()
+    key = tdl.event.key_wait()
+    key_char = key.char
+    if key_char == '':
+        key_char = ' ' # placeholder
+ 
+    if key.key == 'ENTER' and key.alt:
+        #Alt+Enter: toggle fullscreen
+        tdl.set_fullscreen(not tdl.get_fullscreen())
+ 
+    #convert the ASCII code to an index; if it corresponds to an option, return it
+    index = ord(key_char) - ord('a')
+    if index >= 0 and index < len(options):
+        return index
+    return None
+
+    
+### INVENTORY ###
+def inventory_menu(header):
+    #show a menu with each item of the inventory as an option
+    if len(inventory) == 0:
+        options = ['Inventory is empty.']
+    else:
+        options = [item.name for item in inventory]
+ 
+    index = menu(header, options, constants.INVENTORY_WIDTH)
+ 
+    #if an item was chosen, return it
+    if index is None or len(inventory) == 0:
+        return None
+    return inventory[index].item
+    
+
+ ### TARGETING ###
 def target_tile(max_range=None):
     #return the position of a tile left-clicked in player's FOV (optionally in 
     #a range), or (None,None) if right-clicked.
@@ -771,6 +736,17 @@ def target_tile(max_range=None):
             (max_range is None or player.distance(x, y) <= max_range)):
             return mouse_coord
  
+def get_names_under_mouse():
+    #return a string with the names of all objects under the mouse
+    (x, y) = mouse_coord
+    
+    #create a list with the names of all objects at the mouse's coordinates and in FOV
+    names = [obj.name for obj in objects
+        if obj.x == x and obj.y == y and (obj.x, obj.y) in visible_tiles]
+        
+    names = ', '.join(names)  #join the names, separated by commas
+    return names.capitalize() 
+    
 def target_monster(max_range=None):
     #returns a clicked monster inside FOV up to a range, or None if right-clicked
     while True:
@@ -782,7 +758,7 @@ def target_monster(max_range=None):
         for obj in objects:
             if obj.x == x and obj.y == y and obj.fighter and obj != player:
                 return obj
- 
+
 def closest_monster(max_range):
     #find closest enemy, up to a maximum range, and in the player's FOV
     closest_enemy = None
@@ -797,6 +773,7 @@ def closest_monster(max_range):
                 closest_dist = dist
     return closest_enemy
  
+ ### CAST SPELLS ###
 def cast_heal():
     #heal the player
     if player.fighter.hp == player.fighter.max_hp:
@@ -804,27 +781,27 @@ def cast_heal():
         return 'cancelled'
  
     message('Your wounds start to feel better!', colors.light_violet)
-    player.fighter.heal(HEAL_AMOUNT)
+    player.fighter.heal(constants.HEAL_AMOUNT)
  
 def cast_lightning():
     #find closest enemy (inside a maximum range) and damage it
-    monster = closest_monster(LIGHTNING_RANGE)
+    monster = closest_monster(constants.LIGHTNING_RANGE)
     if monster is None:  #no enemy found within maximum range
         message('No enemy is close enough to strike.', colors.red)
         return 'cancelled'
  
     #zap it!
     message('A lighting bolt strikes the ' + monster.name + ' with a loud ' +
-            'thunder! The damage is ' + str(LIGHTNING_DAMAGE) + ' hit points.', 
+            'thunder! The damage is ' + str(constants.LIGHTNING_DAMAGE) + ' hit points.', 
             colors.light_blue)
  
-    monster.fighter.take_damage(LIGHTNING_DAMAGE)
+    monster.fighter.take_damage(constants.LIGHTNING_DAMAGE)
  
 def cast_confuse():
     #ask the player for a target to confuse
     message('Left-click an enemy to confuse it, or right-click to cancel.', 
             colors.light_cyan)
-    monster = target_monster(CONFUSE_RANGE)
+    monster = target_monster(constants.CONFUSE_RANGE)
     if monster is None:
         message('Cancelled')
         return 'cancelled'
@@ -847,15 +824,17 @@ def cast_fireball():
         message('Cancelled')
         return 'cancelled'
     message('The fireball explodes, burning everything within ' + 
-            str(FIREBALL_RADIUS) + ' tiles!', colors.orange)
+            str(constants.FIREBALL_RADIUS) + ' tiles!', colors.orange)
  
     for obj in objects:  #damage every fighter in range, including the player
-        if obj.distance(x, y) <= FIREBALL_RADIUS and obj.fighter:
+        if obj.distance(x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
             message('The ' + obj.name + ' gets burned for ' + 
-                    str(FIREBALL_DAMAGE) + ' hit points.', colors.orange)
+                    str(constants.FIREBALL_DAMAGE) + ' hit points.', colors.orange)
  
-            obj.fighter.take_damage(FIREBALL_DAMAGE)
+            obj.fighter.take_damage(constants.FIREBALL_DAMAGE)
  
+ 
+ ### SAVE AND LOAD GAME ###
 def save_game():
     #open a new empty shelve (possibly overwriting an old one) to write the game data
     with shelve.open('savegame', 'n') as savefile:
@@ -879,6 +858,7 @@ def load_game():
         game_msgs = savefile['game_msgs']
         game_state = savefile['game_state']
  
+ ### NEW GAME ###
 def new_game():
     global player, inventory, game_msgs, game_state
  
@@ -901,6 +881,7 @@ def new_game():
     #a warm welcoming message!
     message('Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.', colors.red)
  
+ ### MAIN LOOP ###
 def play_game():
     global mouse_coord, fov_recompute
  
@@ -931,21 +912,24 @@ def play_game():
                 if obj.ai:
                     obj.ai.take_turn()
  
+ ### MAIN MENU ###
 def main_menu():
-    img = image_load('menu_background.png')
+    img = tcod.image_load(constants.MENU_BACKGROUND)
  
     while not tdl.event.is_window_closed():
-        #show the background image, at twice the regular console resolution
-        img.blit_2x(root, 0, 0)
- 
+        #show the title image
+        xcenter = (constants.SCREEN_WIDTH) // 2
+        ycenter = (constants.SCREEN_HEIGHT) // 2
+        img.blit(root, xcenter, ycenter, tcod.BKGND_SET, 0.5, 0.5, 0)
+        
         #show the game's title, and some credits!
-        title = 'TOMBS OF THE ANCIENT KINGS'
-        center = (SCREEN_WIDTH - len(title)) // 2
-        root.draw_str(center, SCREEN_HEIGHT//2-4, title, bg=None, fg=colors.light_yellow)
+        title = 'Tombs of Terror'
+        center = (constants.SCREEN_WIDTH - len(title)) // 2
+        root.draw_str(center, constants.SCREEN_HEIGHT//2-4, title, bg=None, fg=colors.light_yellow)
  
-        title = 'By Jotaf'
-        center = (SCREEN_WIDTH - len(title)) // 2
-        root.draw_str(center, SCREEN_HEIGHT-2, title, bg=None, fg=colors.light_yellow)
+        title = 'By Astrimedes'
+        center = (constants.SCREEN_WIDTH - len(title)) // 2
+        root.draw_str(center, constants.SCREEN_HEIGHT-2, title, bg=None, fg=colors.light_yellow)
  
         #show options and wait for the player's choice
         choice = menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
@@ -962,13 +946,24 @@ def main_menu():
             play_game()
         elif choice == 2:  #quit
             break
- 
- 
-tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
-root = tdl.init(SCREEN_WIDTH, SCREEN_HEIGHT, title="Roguelike", 
-                fullscreen=False)
-tdl.setFPS(LIMIT_FPS)
-con = tdl.Console(MAP_WIDTH, MAP_HEIGHT)
-panel = tdl.Console(SCREEN_WIDTH, PANEL_HEIGHT)
- 
-main_menu()
+
+
+### LAUNCH GAME ###
+def game_start():
+    global root, con, panel
+
+    tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
+    root = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
+                    fullscreen=False)
+    con = tdl.Console(constants.MAP_WIDTH, constants.MAP_HEIGHT)
+    panel = tdl.Console(constants.SCREEN_WIDTH, constants.PANEL_HEIGHT)
+    
+    tdl.setFPS(constants.LIMIT_FPS)
+    
+    ### start main menu ###
+    main_menu()
+
+### Start script ###
+# Game start
+if __name__ == '__main__':
+    game_start()
