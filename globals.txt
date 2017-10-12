@@ -1,0 +1,20 @@
+### Rendering objects:
+root (Console) = game.root_console
+con (Console) = game.map_console
+panel (Console) = game.message_panel
+game_msgs (list of String: messages panel content) = game.messages
+### ^^^^^  all above replaced in main ###
+
+### Map objects:
+objects (list of Tiles)
+visible_tiles (list of Tiles)
+my_map (2d array of Tiles)
+fov_recompute (bool)
+playerx (float)
+playery (float)
+player (GameObject of player)
+
+### Game objects:
+game_state (String name of current game state)
+mouse_coord (2 element tuple of floats)
+inventory (list of Items)

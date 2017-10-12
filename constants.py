@@ -23,6 +23,9 @@ ROOM_MIN_SIZE = 6
 MAX_ROOMS = 30
 MAX_ROOM_MONSTERS = 3
 MAX_ROOM_ITEMS = 2
+
+#monster pathing
+DEFAULT_PATHSIZE = 25
  
 #spell values
 HEAL_AMOUNT = 4
@@ -34,13 +37,22 @@ FIREBALL_RADIUS = 3
 FIREBALL_DAMAGE = 12
  
 # game / map settings
-FOV_ALGO = 'BASIC'
+FOV_ALGO = 'SHADOW' # was 'BASIC'
 FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 10
+TORCH_RADIUS = 5 #was 10
+
+# launcher settings
 LIMIT_FPS = 20  #20 frames-per-second maximum
+TITLE = 'Deathreek Dungeon'
+AUTHOR = 'Astrimedes'
 
 # main menu image
 MENU_BACKGROUND = 'ddoor.png'
+
+#state names
+STATE_PLAYING = 'playing'
+STATE_DEAD = 'dead'
+STATE_EXIT = 'exit'
 
 # map colors
 color_dark_wall = (0, 0, 100)
