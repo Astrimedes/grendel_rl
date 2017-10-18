@@ -11,6 +11,9 @@ import constants
 import dungeon
 import colors 
 
+import logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
 class TurnEvent:
     # information about what transpired while resolving player input (did a turn pass?)
     def __init__(self, turn_passed = False, description = ''):
@@ -18,7 +21,6 @@ class TurnEvent:
         self.description = description
 
 class Game:
-
     def __init__(self):
         self.map_console = None
         self.root_console = None
@@ -27,35 +29,61 @@ class Game:
         self.messages = None
         self.message_panel = None
         self.mouse_coord = None
-    
+        self.player_died = False
     
     ### SAVE AND LOAD GAME ###
     def save_game(self):
-        #open a new empty shelve (possibly overwriting an old one) to write the game data
-        with shelve.open('savegame', 'n') as savefile:
-            savefile['map'] = self.dungeon.map
-            savefile['objects'] = self.dungeon.objects
-            savefile['player_index'] = self.dungeon.objects.index(self.player)  #index of player in objects list
-            savefile['inventory'] = self.dungeon.inventory
+        
+        if self.dungeon and self.dungeon.player and not self.player_died:
+            #open a new empty shelve (possibly overwriting an old one) to write the game data
+            with shelve.open('savegame', 'n') as savefile:
+                savefile['map'] = self.dungeon.map
+                savefile['objects'] = self.dungeon.objects
+                savefile['player_index'] = self.dungeon.objects.index(self.dungeon.player)  #index of player in objects list
+                savefile['inventory'] = self.dungeon.inventory
+                savefile['messages'] = self.messages
+        else:
+            logging.debug("Dead: clearing save file...")
+            shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
             
-            savefile['game_msgs'] = self.messages
-            savefile['game_state'] = self.state
+            logging.debug("Shelf contents: %s", shelf)
+            shelf.close()
      
      
     def load_game(self):
         #open the previously saved shelve and load the game data
+        
+        # if self.dungeon:
+            # del self.dungeon
+        
+        self.dungeon = dungeon.Dungeon(self)
+        
+        #logging.debug('Before Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
      
         with shelve.open('savegame', 'r') as savefile:
-            self.dungeon.map = savefile['map']
-            self.dungeon.objects = savefile['objects']
-            self.dungeon.player = dungeon.objects[savefile['player_index']]  #get index of player in objects list and access it
-            self.dungeon.inventory = savefile['inventory']
-            
-            self.game_msgs = savefile['game_msgs']
-            self.state = savefile['self.state']
+            if savefile:
+                try:
+                    self.dungeon.map = savefile['map']
+                    self.dungeon.objects = savefile['objects']
+                    self.dungeon.player = self.dungeon.objects[savefile['player_index']]  #get index of player in objects list and access it
+                    self.dungeon.inventory = savefile['inventory']
+                    self.messages = savefile['messages']
+                    if self.dungeon.player.fighter.hp > 0:
+                        self.state = constants.STATE_PLAYING
+                    else:
+                        self.state = constants.STATE_DEAD
+                    logging.debug('After Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
+                    return True
+                except:
+                    return False
+            else:
+                return False
      
     ### NEW GAME ###
     def new_game(self):
+        
+        if self.dungeon:
+            del self.dungeon
         
         self.dungeon = dungeon.Dungeon(self)
      
@@ -66,6 +94,8 @@ class Game:
         self.state = constants.STATE_PLAYING
      
         #create the list of game messages and their colors, starts empty
+        if self.messages:
+            del self.messages
         self.messages = []
      
         #a warm welcoming message!
@@ -74,33 +104,44 @@ class Game:
     ### MAIN LOOP ###
     def play_game(self):
      
-        player_action = None
+        action = None
         self.mouse_coord = (0, 0)
         
-        self.map_console.clear() #unexplored areas start black (which is the default background color)
-     
         while not tdl.event.is_window_closed():
+        
+            # if not action:
+                # desc = 'None'
+            # else:
+                # desc = action.description
+            # logging.debug('play_game, state = %s, action = %s', self.state, desc)
      
             #draw all objects in the list
-            self.render_all()
-            tdl.flush()
-     
+            if self.dungeon:
+                self.render_all()
+                tdl.flush()
+                
             #handle keys and exit game if needed
             action = self.handle_keys()
-            
-            #let monsters take their turn: during play state, when a turn has passed
-            if self.state == constants.STATE_PLAYING and action.turn:
-                self.dungeon.ai_act()
+     
+            if self.state == constants.STATE_PLAYING:
+                #let monsters take their turn: during play state, when a turn has passed
+                if action.turn:
+                    self.dungeon.ai_act()
+                
             #exit if player pressed exit
             elif self.state == constants.STATE_EXIT:
                 self.save_game()
                 break
      
-     ### MAIN MENU ###
+    ### MAIN MENU ###
     def main_menu(self):
+        
         img = tcod.image_load(constants.MENU_BACKGROUND)
      
         while not tdl.event.is_window_closed():
+        
+            self.clear_all()
+        
             #show the title image
             xcenter = (constants.SCREEN_WIDTH) // 2
             ycenter = (constants.SCREEN_HEIGHT) // 2
@@ -114,6 +155,8 @@ class Game:
             title = 'By ' + constants.AUTHOR
             center = (constants.SCREEN_WIDTH - len(title)) // 2
             self.root_console.draw_str(center, constants.SCREEN_HEIGHT-2, 'By Astrimedes', bg=None, fg=colors.light_yellow)
+            
+            tdl.flush()
      
             #show options and wait for the player's choice
             choice = self.menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
@@ -122,15 +165,20 @@ class Game:
                 self.new_game()
                 self.play_game()
             if choice == 1:  #load last game
-                try:
-                    self.load_game()
-                except:
-                    self.msgbox('\n No saved game to load.\n', 24)
-                    continue
-                self.play_game()
+                if self.load_game():
+                    self.play_game()
+                else:
+                    choice = self.menu('', ['No saved game to load!'], 24)
             elif choice == 2:  #quit
+                logging.debug('Player quit.')
                 break
-
+                
+    def clear_all(self):
+        self.map_console.clear()
+        self.root_console.clear()
+        self.message_panel.clear()
+        tdl.flush()
+        self.fov_recompute = True
 
     ### LAUNCH GAME ###
     def game_start(self):
@@ -162,7 +210,7 @@ class Game:
             
     ### POP UP ###
     def msgbox(self, text, width=50):
-        menu(text, [], width)  #use menu() as a sort of "message box"
+        self.menu(text, [], width)  #use menu() as a sort of "message box"
         
         
     ### MENU WITH INPUT ###
@@ -223,21 +271,21 @@ class Game:
         if len(self.dungeon.inventory) == 0:
             options = ['Inventory is empty.']
         else:
-            options = [item.name for item in dungeon.inventory]
+            options = [item.name for item in self.dungeon.inventory]
      
-        index = menu(header, options, constants.INVENTORY_WIDTH)
+        index = self.menu(header, options, constants.INVENTORY_WIDTH)
      
         #if an item was chosen, return it
-        if index is None or len(dungeon.inventory) == 0:
+        if index is None or len(self.dungeon.inventory) == 0:
             return None
-        return dungeon.inventory[index].item
+        return self.dungeon.inventory[index].item
 
         
     ### TARGETING ###
     def target_tile(self, max_range=None):
         #return the position of a tile left-clicked in player's FOV (optionally in 
         #a range), or (None,None) if right-clicked.
-        global mouse_coord
+        
         while True:
             #render the screen. this erases the inventory and shows the names of
             #objects under the mouse.
@@ -252,15 +300,14 @@ class Game:
                 elif ((event.type == 'MOUSEDOWN' and event.button == 'RIGHT') or 
                       (event.type == 'KEYDOWN' and event.key == 'ESCAPE')):
                     return (None, None)
-            render_all()
      
             #accept the target if the player clicked in FOV, and in case a range is 
             #specified, if it's in that range
-            x = mouse_coord[0]
-            y = mouse_coord[1]
-            if (clicked and mouse_coord in visible_tiles and
-                (max_range is None or distance(player, x, y) <= max_range)):
-                return mouse_coord
+            x = self.mouse_coord[0]
+            y = self.mouse_coord[1]
+            if (clicked and mouse_coord in self.dungeon.visible_tiles and
+                (max_range is None or self.dungeon.distance(player, x, y) <= max_range)):
+                return self.mouse_coord
  
     def get_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
@@ -276,7 +323,7 @@ class Game:
     def target_monster(self, max_range=None):
         #returns a clicked monster inside FOV up to a range, or None if right-clicked
         while True:
-            (x, y) = self.dungeon.target_tile(max_range)
+            (x, y) = self.target_tile(max_range)
             if x is None:  #player cancelled
                 return None
      
@@ -288,10 +335,7 @@ class Game:
     
     ### PLAYER INPUT ###
     def handle_keys(self):
-        global playerx, playery
-        global fov_recompute
-        global mouse_coord
-     
+    
         keypress = False
         for event in tdl.event.get():
             if event.type == 'KEYDOWN':
@@ -312,7 +356,8 @@ class Game:
             self.exit_game()
             return TurnEvent(False, 'exiting')  #exit game
      
-        if self.state == constants.STATE_PLAYING:
+        if self.state == constants.STATE_PLAYING and not(self.dungeon.player.fighter.died):
+        
             #movement keys
             #up left
             if user_input.key == 'KP7':
@@ -348,7 +393,7 @@ class Game:
                     #pick up an item
                     for obj in self.dungeon.objects:  #look for an item in the player's tile
                         if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
-                            obj.item.pick_up()
+                            self.dungeon.pick_up(obj.item)
                             return TurnEvent(True, 'picked up item')
      
                 if user_input.text == 'i':
