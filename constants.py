@@ -27,22 +27,21 @@ MAX_ROOM_ITEMS = 2
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
- 
+
 #spell values
 HEAL_AMOUNT = 6
 LIGHTNING_DAMAGE = 20
 LIGHTNING_RANGE = 5
-CONFUSE_RANGE = 8
-CONFUSE_NUM_TURNS = 10
 FIREBALL_RADIUS = 3
 FIREBALL_DAMAGE = 12
  
 # game / map settings
 FOV_ALGO = 'SHADOW' # was 'BASIC'
-FOV_ALGO_BAD = 'PERMISSIVE8'
+FOV_ALGO_BAD = 'BASIC'
 FOV_RADIUS_BAD = 5
 FOV_LIGHT_WALLS = True
 TORCH_RADIUS = 5 #was 10
+FOV_BASIC = 'BASIC'
 
 # launcher settings
 LIMIT_FPS = 20  #20 frames-per-second maximum
@@ -63,6 +62,8 @@ color_dark_wall = colors.darkest_azure
 
 color_light_ground = colors.amber
 color_light_wall = colors.dark_amber
+
+color_target = colors.yellow
 
 # player colors
 color_dead = colors.dark_crimson

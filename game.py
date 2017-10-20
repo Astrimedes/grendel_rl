@@ -37,6 +37,11 @@ class Game:
     def save_game(self):
         
         if self.dungeon and self.dungeon.player and not self.dungeon.player.fighter.died and self.dungeon.player.fighter.hp > 0:
+        
+            # clear dungeon reference from objects (we re-set upon load)
+            for obj in self.dungeon.objects:
+                obj.dungeon = None
+            
             #open a new empty shelve (possibly overwriting an old one) to write the game data
             with shelve.open('savegame', 'n') as savefile:
                 savefile['map'] = self.dungeon.map
@@ -44,6 +49,7 @@ class Game:
                 savefile['player_index'] = self.dungeon.objects.index(self.dungeon.player)  #index of player in objects list
                 savefile['inventory'] = self.dungeon.inventory
                 savefile['messages'] = self.messages
+                savefile['turn'] = self.dungeon.turn
         else:
             logging.info("Dead: clearing save file...")
             shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
@@ -78,10 +84,16 @@ class Game:
                     self.dungeon.player = self.dungeon.objects[savefile['player_index']]  #get index of player in objects list and access it
                     self.dungeon.inventory = savefile['inventory']
                     self.messages = savefile['messages']
+                    self.dungeon.turn = savefile['turn']
                     if self.dungeon.player.fighter.hp > 0:
                         self.state = constants.STATE_PLAYING
                     else:
                         self.state = constants.STATE_DEAD
+                        self.dungeon.player.fighter.died = True
+                    # set dungeon reference
+                    for obj in self.dungeon.objects:
+                        obj.dungeon = self.dungeon
+                    
                     logging.debug('After Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
                     return True
                 else:
@@ -130,6 +142,7 @@ class Game:
             #draw all objects in the list
             if self.dungeon:
                 self.render_all()
+                self.clear_map_render()
                 tdl.flush()
                 
             #handle keys and exit game if needed
@@ -303,42 +316,80 @@ class Game:
         if len(self.dungeon.inventory) == 0:
             options = ['Inventory is empty.']
         else:
-            options = [item.name for item in self.dungeon.inventory]
+            options = [item.owner.name for item in self.dungeon.inventory]
      
         index = self.menu(header, options, constants.INVENTORY_WIDTH)
+        logging.info('Inventory: chose index %s', index)
      
         #if an item was chosen, return it
         if index is None or len(self.dungeon.inventory) == 0:
+            logging.info('Inv index: %s, inventory len: %s', index, len(self.dungeon.inventory))
             return None
-        return self.dungeon.inventory[index].item
+            
+        logging.info('Inv item chosen: %s', self.dungeon.inventory[index])
+        return self.dungeon.inventory[index]
 
         
     ### TARGETING ###
-    def target_tile(self, max_range=None):
+    def target_tile(self, max_range=None, target_size=0):
         #return the position of a tile left-clicked in player's FOV (optionally in 
         #a range), or (None,None) if right-clicked.
         
+        # rendering background
+        self.render_all()
+        tdl.flush()
+        
+        last_coord = (-999,-999)
+        
         while True:
-            #render the screen. this erases the inventory and shows the names of
-            #objects under the mouse.
-            tdl.flush()
-     
+            
             clicked = False
             for event in tdl.event.get():
                 if event.type == 'MOUSEMOTION':
-                    mouse_coord = event.cell
+                    self.mouse_coord = event.cell
                 if event.type == 'MOUSEDOWN' and event.button == 'LEFT':
                     clicked = True
                 elif ((event.type == 'MOUSEDOWN' and event.button == 'RIGHT') or 
                       (event.type == 'KEYDOWN' and event.key == 'ESCAPE')):
                     return (None, None)
-     
+            
             #accept the target if the player clicked in FOV, and in case a range is 
             #specified, if it's in that range
             x = self.mouse_coord[0]
             y = self.mouse_coord[1]
-            if (clicked and mouse_coord in self.dungeon.visible_tiles and
+            
+            
+            
+            #update targeting area
+            if (x,y) != last_coord or clicked:
+            
+                self.render_all()
+                
+                logging.info('(%s,%s) mouse move', x, y)
+                # set last value 
+                last_coord = self.mouse_coord
+                if (x,y) in self.dungeon.visible_tiles:
+                    # render new target area
+                    if not(self.dungeon.map[x][y].blocked) and (not(max_range) or (self.dungeon.distance(self.dungeon.player, x, y) <= max_range)):
+                        self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_target)
+                        logging.info('drew to %s',last_coord)
+                        if target_size > 0:
+                            #target on map
+                            target = tdl.map.quickFOV(x, y, self.dungeon.is_visible_tile,
+                                                         fov=constants.FOV_BASIC,
+                                                         radius=target_size,
+                                                         lightWalls=False)
+                            for tile in target:
+                                if not self.dungeon.map[tile[0]][tile[1]].blocked and tile in self.dungeon.visible_tiles:
+                                    self.map_console.draw_char(tile[0], tile[1], None, fg=None, bg=constants.color_target)
+            
+            # rendering background (overwrite previous target squares)
+            self.root_console.blit(self.map_console, 0, 0, constants.MAP_WIDTH, constants.MAP_HEIGHT, 0, 0)
+            tdl.flush()
+            
+            if (clicked and self.mouse_coord in self.dungeon.visible_tiles and
                 (max_range is None or self.dungeon.distance(player, x, y) <= max_range)):
+                self.dungeon.fov_recompute = True
                 return self.mouse_coord
  
     def get_names_under_mouse(self):
@@ -470,7 +521,8 @@ class Game:
         self.message_panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
      
     def render_all(self):
-     
+        logging.info('render_all')
+        
         if self.dungeon.fov_recompute:
             self.dungeon.fov_recompute = False
             self.dungeon.visible_tiles = tdl.map.quickFOV(self.dungeon.player.x, self.dungeon.player.y,
@@ -479,26 +531,26 @@ class Game:
                                              radius=constants.TORCH_RADIUS,
                                              lightWalls=constants.FOV_LIGHT_WALLS)
      
-            #go through all tiles, and set their background color according to the FOV
-            for y in range(constants.MAP_HEIGHT):
-                for x in range(constants.MAP_WIDTH):
-                    visible = (x, y) in self.dungeon.visible_tiles
-                    wall = self.dungeon.map[x][y].block_sight
-                    if not visible:
-                        #if it's not visible right now, the player can only see it 
-                        #if it's explored
-                        if self.dungeon.map[x][y].explored:
-                            if wall:
-                                self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
-                            else:
-                                self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_ground)
-                    else:
+        #go through all tiles, and set their background color according to the FOV
+        for y in range(constants.MAP_HEIGHT):
+            for x in range(constants.MAP_WIDTH):
+                visible = (x, y) in self.dungeon.visible_tiles
+                wall = self.dungeon.map[x][y].block_sight
+                if not visible:
+                    #if it's not visible right now, the player can only see it 
+                    #if it's explored
+                    if self.dungeon.map[x][y].explored:
                         if wall:
-                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_wall)
+                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
                         else:
-                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
-                        #since it's visible, explore it
-                        self.dungeon.map[x][y].explored = True
+                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_ground)
+                else:
+                    if wall:
+                        self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_wall)
+                    else:
+                        self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
+                    #since it's visible, explore it
+                    self.dungeon.map[x][y].explored = True
      
         #draw all objects in the list
         for obj in self.dungeon.objects:
@@ -527,6 +579,8 @@ class Game:
         #blit the contents of "self.message_panel" to the self.root_console console
         self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
         
+        
+    def clear_map_render(self):
         #erase all objects at their old locations, before they move
         for obj in self.dungeon.objects:
             self.draw_clear(obj)

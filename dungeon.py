@@ -10,6 +10,7 @@ import game
 
 from random import randint
 from random import choice
+from random import random
 
 import numpy as np
 
@@ -56,26 +57,27 @@ class Item:
     #an item that can be picked up and used.
     def __init__(self, use_function=None):
         self.use_function = use_function
+        self.owner = None
  
     def drop(self):
         #add to the map and remove from the player's inventory. also, place it at the player's coordinates
-        self.owner.dungeon.objects.append(self.owner)
-        self.owner.dungeon.inventory.remove(self.owner)
+        _dungeon.objects.append(self.owner)
+        _dungeon.inventory.remove(self.owner)
         self.owner.x = player.x
         self.owner.y = player.y
-        message('You dropped a ' + self.owner.name + '.', colors.yellow)
+        _dungeon.game.message('You dropped a ' + self.owner.name + '.', colors.yellow)
  
     def use(self):
         #just call the "use_function" if it is defined
         if self.use_function is None:
-            message('The ' + self.owner.name + ' cannot be used.')
+            _dungeon.game.message('The ' + self.owner.name + ' cannot be used.')
             return False
         else:
             if self.use_function() != 'cancelled':
-                self.owner.dungeon.inventory.remove(self.owner)  #destroy after use, unless it was 
+                _dungeon.inventory.remove(self)  #destroy after use, unless it was 
                                               #cancelled for some reason
                 return True
-                
+        return False
  
 class GameObject:
     #this is a generic object: the player, a monster, an item, the stairs...
@@ -105,11 +107,31 @@ class GameObject:
         self.item = item
         if self.item:  #let the Item component know who owns it
             self.item.owner = self
+            
+class HealingPotion(GameObject):
+    def __init__(self, x=0, y=0):
+        itm = Item(cast_heal)
+        GameObject.__init__(self, _dungeon, x, y, '!', 'healing potion',
+            colors.violet, item=itm)
+        #self, dungeon, x, y, char, name, color, blocks=False, 
+                 #fighter=None, ai=None, item=None):
+            
+class LightningScroll(GameObject):
+    def __init__(self, x=0, y=0):
+        itm = Item(cast_lightning)
+        GameObject.__init__(self, _dungeon, x, y, '#', 'scroll of lightning bolt',
+            colors.light_blue, item=itm)
+            
+class FireballScroll(GameObject):
+    def __init__(self, x=0, y=0):
+        itm = Item(cast_fireball)
+        GameObject.__init__(self, _dungeon, x, y, '#', 'scroll of fireball',
+            colors.light_flame, item=itm)
         
         
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, speed=1, atk_speed=0, death_function=None):
+    def __init__(self, hp, defense, power, speed=1, atk_speed=0, death_function=None, weapon=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -126,7 +148,7 @@ class Fighter:
         self.last_turn = 0
         
     def pass_time(self):
-        logging.info('%s fighter.pass_time()', self.owner.name)
+        logging.debug('%s fighter.pass_time()', self.owner.name)
         if self.owner.ai:
             while self.owner.dungeon.turn - self.last_turn >= self.speed:
                 self.last_turn += self.owner.ai.take_turn()
@@ -200,7 +222,7 @@ class Fighter:
     def heal(self, amount):
         #heal by the given amount, without going over the maximum
         self.hp += amount
-        if self.owner == self.owner.dungeon.player:
+        if self.owner == _dungeon.player:
                 self.set_health_color()
         if self.hp > self.max_hp:
             self.hp = self.max_hp
@@ -286,8 +308,11 @@ class Zombie(GameObject):
         self.dungeon.send_to_back(self)
         
         
-class Weapon:
+class Weapon(Item):
     def __init__(self, min_dmg, max_dmg, speed, attack_names, attack_verbs):
+        
+        Item.__init__(self, use_function=use)
+        
         self.min_dmg = min_dmg
         self.max_dmg = max_dmg
         self.speed = speed
@@ -296,6 +321,21 @@ class Weapon:
         
     def name(self):
         return self.attack_names[0]
+        
+    def use(self):
+    
+        
+        
+        #just call the "use_function" if it is defined
+        if self.use_function is None:
+            _dungeon.game.message('The ' + self.owner.name + ' cannot be used.')
+            return False
+        else:
+            if self.use_function() != 'cancelled':
+                _dungeon.inventory.remove(self)  #destroy after use, unless it was 
+                                              #cancelled for some reason
+                return True
+        return False
         
     def damage(self, base_power):
         return  
@@ -330,6 +370,11 @@ class Dungeon:
         
         # player creates the objects list when made 'new'
         self.objects.append(self.player)
+        
+        # give the player some items
+        self.inventory.append(HealingPotion().item)
+        self.inventory.append(LightningScroll().item)
+        self.inventory.append(FireballScroll().item)
             
     ### MAP CREATION ###
     def make_map(self):
@@ -344,6 +389,9 @@ class Dungeon:
      
         rooms = []
         num_rooms = 0
+        
+        items_left = self.level + 5
+        monsters_left = self.level +6
      
         for r in range(constants.MAX_ROOMS):
             #random width and height
@@ -395,7 +443,13 @@ class Dungeon:
                         self.create_h_tunnel(prev_x, new_x, new_y)
      
                 #add some contents to this room, such as monsters
-                self.place_objects(new_room)
+                items = randint(0, min(items_left, 2))
+                items_left -= items
+                monsters = randint(0, min(monsters_left, 2))
+                monsters_left -= monsters
+                
+                # add them!
+                self.place_objects(new_room, monsters, items)
      
                 #finally, append the new room to the list
                 rooms.append(new_room)
@@ -419,9 +473,9 @@ class Dungeon:
                 self.map[x][y].blocked = False
                 self.map[x][y].block_sight = False
                 
-    def place_objects(self, room):
+    def place_objects(self, room, num_monsters, num_items):
         #choose random number of monsters
-        num_monsters = randint(0, constants.MAX_ROOM_MONSTERS)
+        #num_monsters = randint(0, constants.MAX_ROOM_MONSTERS)
      
         for i in range(num_monsters):
             #choose random spot for this monster
@@ -441,7 +495,7 @@ class Dungeon:
                 self.objects.append(monster)
      
         #choose random number of items
-        num_items = randint(0, constants.MAX_ROOM_ITEMS)
+        #num_items = randint(0, constants.MAX_ROOM_ITEMS)
      
         for i in range(num_items):
             #choose random spot for this item
@@ -453,24 +507,27 @@ class Dungeon:
                 dice = randint(0, 100)
                 if dice < 70:
                     #create a healing potion (70% chance)
-                    item_component = Item(use_function=self.cast_heal)
+                    #item_component = Item(use_function=cast_heal)
      
-                    item = GameObject(self, x, y, '!', 'healing potion', 
-                                      colors.violet, item=item_component)
+                    # item = GameObject(self, x, y, '!', 'healing potion', 
+                                      # colors.violet, item=item_component)
+                    item = HealingPotion(x, y)
      
                 elif dice < 85:
                     #create a lightning bolt scroll (15% chance)
-                    item_component = Item(use_function=self.cast_lightning)
+                    # item_component = Item(use_function=cast_lightning)
      
-                    item = GameObject(self, x, y, '#', 'scroll of lightning bolt', 
-                                      colors.light_yellow, item=item_component)
+                    # item = GameObject(self, x, y, '#', 'scroll of lightning bolt', 
+                                      # colors.light_yellow, item=item_component)
+                    item = LightningScroll(x, y)
      
                 else:
                     #create a fireball scroll (15% chance)
-                    item_component = Item(use_function=self.cast_fireball)
+                    # item_component = Item(use_function=cast_fireball)
      
-                    item = GameObject(self, x, y, '#', 'scroll of fireball', 
-                                      colors.light_yellow, item=item_component)
+                    # item = GameObject(self, x, y, '#', 'scroll of fireball', 
+                                      # colors.light_yellow, item=item_component)
+                    item = FireballScroll(x, y)
      
                 #else:
                     #create a confuse scroll (15% chance)
@@ -480,7 +537,7 @@ class Dungeon:
                     #                  colors.light_yellow, item=item_component)
      
                 self.objects.append(item)
-                self.send_to_back(item)  #items appear below other self.objects
+                self.send_to_back(item)  #items appear below other objects
 
                 
     ### MAP QUERIES ###
@@ -491,6 +548,9 @@ class Dungeon:
     def distance_to(self, game_obj, other_game_obj):
         #return the distance to another object
         return self.distance(game_obj, other_game_obj.x, other_game_obj.y)
+        
+    def distance_pts(self, x1, y1, x2, y2):
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
     def is_visible_tile(self, x, y):
      
@@ -561,11 +621,11 @@ class Dungeon:
             for x1 in range(constants.MAP_WIDTH):
                 tcod.map_set_properties(fov, x1, y1, not self.map[x1][y1].block_sight, not self.map[x1][y1].blocked)
  
-        #Scan all the self.objects to see if there are self.objects that must be navigated around
-        #Check also that the object isn't self or the target (so that the start and the end points are free)
+        #Scan all the objects to see if there are objects that must be navigated around
+        #Check also that the object isn't game_obj or the target (so that the start and the end points are free)
         #The AI class handles the situation if self is next to the target so it will not use this A* function anyway   
         for obj in self.objects:
-            if obj.blocks and obj != self and obj != target:
+            if obj.blocks and obj != game_obj and obj != target:
                 #Set the tile as a wall so it must be navigated around
                 tcod.map_set_properties(fov, obj.x, obj.y, True, False)
  
@@ -633,63 +693,6 @@ class Dungeon:
         for ftr in [obj.fighter for obj in self.objects if obj.fighter]:
             # ai will take turns, player will only update last_turn counter
             ftr.pass_time()
-
-     ### CAST SPELLS ###
-    def cast_heal(self):
-        #heal the player
-        if self.player.fighter.hp == self.player.fighter.max_hp:
-            self.game.message('You are already at full health.', colors.red)
-            return 'cancelled'
-     
-        self.game.message('Your wounds start to feel better!', colors.light_violet)
-        self.player.fighter.heal(constants.HEAL_AMOUNT+self.level)
-     
-    def cast_lightning(self):
-        #find closest enemy (inside a maximum range) and damage it
-        monster = self.closest_monster(constants.LIGHTNING_RANGE)
-        if monster is None:  #no enemy found within maximum range
-            self.game.message('No enemy is close enough to strike.', colors.red)
-            return 'cancelled'
-     
-        #zap it!
-        self.game.message('A lighting bolt arcs towards the ' + monster.name + ' with a loud thunder!', 
-                colors.light_blue)
-     
-        monster.fighter.take_damage('Magical lightning', choice(['strikes', 'zaps', 'fries']), 'electricity', colors.light_blue, constants.LIGHTNING_DAMAGE)
-     
-    # def cast_confuse(self):
-        # #ask the player for a target to confuse
-        # self.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
-                # colors.light_cyan)
-        # monster = self.game.target_monster(constants.CONFUSE_RANGE)
-        # if monster is None:
-            # self.game.message('Cancelled')
-            # return 'cancelled'
-     
-        # #replace the monster's AI with a "confused" one; after some turns it will 
-        # #restore the old AI
-        # old_ai = monster.ai
-        # monster.ai = ConfusedMonster(old_ai)
-        # monster.ai.owner = monster  #tell the new component who owns it
-        # self.game.message('The eyes of the ' + monster.name + ' look vacant, as he starts to ' +
-                # 'stumble around!', colors.light_green)
-     
-    def cast_fireball(self):
-        #ask the player for a target tile to throw a fireball at
-        self.game.message('Left-click a target tile for the fireball, or right-click to ' +
-                'cancel.', colors.light_cyan)
-     
-        (x, y) = self.game.target_tile()
-        if x is None: 
-            self.game.message('Cancelled')
-            return 'cancelled'
-        self.game.message('The fireball explodes, burning everything within ' + 
-                str(constants.FIREBALL_RADIUS) + ' tiles!', colors.orange)
-     
-        for obj in self.objects:  #damage every fighter in range, including the player
-            if self.distance(obj, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
-                obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flames', 'heat']), colors.orange, constants.FIREBALL_DAMAGE)
-
  
     def send_to_back(self, game_obj):
         #make this object be drawn first, so all others appear above it if 
@@ -703,7 +706,7 @@ class Dungeon:
             self.game.message('Your inventory is full, cannot pick up ' + 
                     item.owner.name + '.', colors.red)
         else:
-            self.inventory.append(item.owner)
+            self.inventory.append(item)
             self.objects.remove(item.owner)
             self.game.message('You picked up a ' + item.owner.name + '!', colors.green)
         
@@ -721,7 +724,13 @@ class BasicMonster:
         monster = self.owner
         
         # monster pathfinding
-        monster_view = tdl.map.quickFOV(monster.x, monster.y,
+        distance = self.dungeon.distance_to(monster, self.dungeon.player)
+        
+        logging.info('%s: %s distance from player', self.owner.name, distance)
+        
+        # calc monster fov if near enough to player
+        if distance < constants.DEFAULT_PATHSIZE:
+            monster_view = tdl.map.quickFOV(monster.x, monster.y,
                                          is_visible_tile,
                                          self.fov,
                                          radius=self.fov_radius,
@@ -729,23 +738,26 @@ class BasicMonster:
                                          
                                          #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
         
-        logging.debug('BasicMonster.owner.name = %s, BasicMonster.dungeon.player = %s', self.owner.name, self.dungeon.player)
+            if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
+                #move towards player if far away
+                if distance >= 2:
+                    #monster.move_towards(player.x, player.y)
+                    self.dungeon.move_astar(monster, self.dungeon.player)
+                    return monster.fighter.speed
+
+                #close enough, attack! (if the player is still alive.)
+                elif self.dungeon.player.fighter.hp > 0:
+                    monster.fighter.attack(self.dungeon.player)
+                    return monster.fighter.speed + monster.fighter.atk_speed
+                    
+        # ...otherwise, move randomly
+        moved = False
+        while not moved:
+            dx = randint(-1, 1)
+            dy = randint(-1, 1)
+            moved = self.dungeon.move(monster, dx, dy) or (random() < 0.1)
         
-        if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
-
-            #move towards player if far away
-            if self.dungeon.distance_to(monster, self.dungeon.player) >= 2:
-                #monster.move_towards(player.x, player.y)
-                self.dungeon.move_astar(monster, self.dungeon.player)
-                return monster.fighter.speed
-
-            #close enough, attack! (if the player is still alive.)
-            elif self.dungeon.player.fighter.hp > 0:
-                monster.fighter.attack(self.dungeon.player)
-                return monster.fighter.speed + monster.fighter.atk_speed
-                
-        else:
-            return monster.fighter.speed
+        return monster.fighter.speed
             
 ### callback functions ###
 def is_visible_tile(x, y):
@@ -761,3 +773,69 @@ def is_visible_tile(x, y):
         return False
     else:
         return True
+        
+
+### CAST SPELLS ###
+def cast_heal():
+    logging.info('casting heal...')
+
+    #heal the player
+    if _dungeon.player.fighter.hp == _dungeon.player.fighter.max_hp:
+        _dungeon.game.message('You are already at full health.', colors.red)
+        return 'cancelled'
+ 
+    _dungeon.game.message('Your wounds start to feel better!', colors.light_violet)
+    _dungeon.player.fighter.heal(constants.HEAL_AMOUNT+_dungeon.level)
+    
+def cast_lightning():
+    logging.info('casting lightning...')
+        
+    #find closest enemy (inside a maximum range) and damage it
+    monster = _dungeon.closest_monster(constants.LIGHTNING_RANGE)
+    if monster is None:  #no enemy found within maximum range
+        _dungeon.game.message('No enemy is close enough to strike.', colors.red)
+        return 'cancelled'
+ 
+    #zap it!
+    _dungeon.game.message('A lighting bolt arcs towards the ' + monster.name + ' with a loud thunder!', 
+            colors.light_blue)
+ 
+    monster.fighter.take_damage('Magical lightning', choice(['strikes', 'zaps', 'fries']), 'electricity', colors.light_blue, constants.LIGHTNING_DAMAGE)
+ 
+# def cast_confuse():
+    # #ask the player for a target to confuse
+    # _dungeon.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
+            # colors.light_cyan)
+    # monster = _dungeon.game.target_monster(constants.CONFUSE_RANGE)
+    # if monster is None:
+        # _dungeon.game.message('Cancelled')
+        # return 'cancelled'
+ 
+    # #replace the monster's AI with a "confused" one; after some turns it will 
+    # #restore the old AI
+    # old_ai = monster.ai
+    # monster.ai = ConfusedMonster(old_ai)
+    # monster.ai.owner = monster  #tell the new component who owns it
+    # _dungeon.game.message('The eyes of the ' + monster.name + ' look vacant, as he starts to ' +
+            # 'stumble around!', colors.light_green)
+ 
+def cast_fireball():
+    logging.info('casting fireball...')
+
+    #ask the player for a target tile to throw a fireball at
+    _dungeon.game.message('Left-click a target tile for the fireball, or right-click to ' +
+            'cancel.', colors.light_cyan)
+ 
+    (x, y) = _dungeon.game.target_tile(max_range=None, target_size=3)
+    
+    logging.info('fireball: (%s, %s)', x, y)
+    
+    if x is None: 
+        _dungeon.game.message('Cancelled')
+        return 'cancelled'
+    _dungeon.game.message('The fireball explodes, burning everything within ' + 
+            str(constants.FIREBALL_RADIUS) + ' tiles!', colors.orange)
+ 
+    for obj in _dungeon.objects:  #damage every fighter in range, including the player
+        if _dungeon.distance(obj, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
+            obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flame', 'heat', 'blast']), colors.orange, constants.FIREBALL_DAMAGE)
