@@ -11,10 +11,12 @@ import game
 from random import randint
 from random import choice
 
+import numpy as np
+
 import math
 
 import logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 _dungeon = None
 
@@ -57,8 +59,8 @@ class Item:
  
     def drop(self):
         #add to the map and remove from the player's inventory. also, place it at the player's coordinates
-        objects.append(self.owner)
-        inventory.remove(self.owner)
+        self.owner.dungeon.objects.append(self.owner)
+        self.owner.dungeon.inventory.remove(self.owner)
         self.owner.x = player.x
         self.owner.y = player.y
         message('You dropped a ' + self.owner.name + '.', colors.yellow)
@@ -107,7 +109,7 @@ class GameObject:
         
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, death_function=None):
+    def __init__(self, hp, defense, power, speed=1, atk_speed=0, death_function=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -115,40 +117,188 @@ class Fighter:
         self.death_function = death_function
         self.owner = None
         self.died = False
-        self.attack_verbs = ['attacks', 'hits', 'slams']
- 
-    def take_damage(self, attacker_name, attack_verb, damage):
-        #apply damage if possible
-        if damage > 0:
-            self.hp -= damage
-            
-            self.owner.dungeon.game.message(attacker_name + ' ' + attack_verb + ' ' + self.owner.name + 
-                  ' for ' + str(damage) + ' damage.')
- 
-            #check for death. if there's a death function, call it
-            if self.hp <= 0:
-                self.died = True
-                function = self.death_function
-                if function is not None:
-                    function(self.owner)
- 
-    def attack(self, target):
-        #a simple formula for attack damage
-        damage = self.power - target.fighter.defense
- 
-        if damage > 0:
-            #make the target take some damage
-            target.fighter.take_damage(self.owner.name.capitalize(), choice(self.attack_verbs), damage)
+        
+        self.weapon = None
+        
+        # used to determine when to act
+        self.speed = speed
+        self.atk_speed = atk_speed
+        self.last_turn = 0
+        
+    def pass_time(self):
+        logging.info('%s fighter.pass_time()', self.owner.name)
+        if self.owner.ai:
+            while self.owner.dungeon.turn - self.last_turn >= self.speed:
+                self.last_turn += self.owner.ai.take_turn()
+                logging.info('%s ai.take_turn()', self.owner.name)
         else:
-            self.owner.dungeon.game.message(self.owner.name.capitalize() + ' attacks ' + target.name + 
-                  ' but it has no effect!')
+            self.last_turn = self.owner.dungeon.turn
+            logging.info('%s - No ai - set last_turn = %s', self.owner.name, self.last_turn)
+            
+    def set_health_color(self):
+        
+        # set color according to health
+        if not self.died:
+            fraction = (self.hp / self.max_hp)
+            self.owner.color = constants.THRESH_COLORS[0]
+            for idx in range(len(constants.THRESH_COLORS)-1, 0, -1):
+                if fraction <= constants.THRESH_HEALTH[idx]:
+                    self.owner.color = constants.THRESH_COLORS[idx]
+                    logging.info('set_health_color %s idx used, fraction %s', idx, fraction)
+                    break
+ 
+    def take_damage(self, attacker_name, attack_verb, weapon_name, attack_color, damage):
+        if damage > 0:
+        
+            selfname = self.owner.name.capitalize()
+            
+            newhp = max(self.hp - damage, 0)
+            
+            fraction = 1 - (newhp / self.max_hp)
+            
+            cc = colors.mutate_color(colors.white, attack_color, fraction)
+                
+            self.owner.dungeon.game.message(attacker_name + "'s " + weapon_name + ' ' + attack_verb + 
+                  ' ' + selfname + ' for ' + str(damage) + ' damage.', cc)
+                  
+            self.take_dmg_silent(damage)
+            
+            if self.owner == self.owner.dungeon.player:
+                self.set_health_color()
+            
+    def take_dmg_silent(self, damage):
+        self.hp -= damage
+        
+        #check for death. if there's a death function, call it
+        if self.hp <= 0:
+            self.died = True
+            function = self.death_function
+            if function is not None:
+                function()
+                
+    def attack(self, target):
+    
+        if not self.weapon:
+            #a simple formula for attack damage
+            damage = randint((self.power//2)+self.owner.dungeon.level, self.power+self.owner.dungeon.level+1) - target.fighter.defense
+            
+            atk_color = colors.light_red
+            if self.owner == self.owner.dungeon.player:
+                atk_color = colors.light_blue
+        
+            if damage > 0:
+                #make the target take some damage
+                target.fighter.take_damage(self.owner.name.capitalize(), choice(self.attack_verbs), choice(self.weapon_names), atk_color, damage)
+            else:
+                self.owner.dungeon.game.message(self.owner.name.capitalize() + ' attacks ' + target.name + 
+                      ' but it has no effect!')
+                      
+            # add atk speed
+            if not self.owner == self.owner.dungeon.player:
+                self.last_turn += self.atk_speed
  
     def heal(self, amount):
         #heal by the given amount, without going over the maximum
         self.hp += amount
+        if self.owner == self.owner.dungeon.player:
+                self.set_health_color()
         if self.hp > self.max_hp:
             self.hp = self.max_hp
             
+class Player(GameObject):
+    def __init__(self, dungeon, x, y):
+    
+        #create object representing the player
+        fighter_component = Fighter(hp=40, defense=2, power=5, 
+                                    speed=1, atk_speed=0, death_function=self.death)
+        fighter_component.attack_verbs = ['bashes', 'slams', 'bludgeons', 'hits']
+        fighter_component.weapon_names = ['morningstar', 'holy morningstar', 'trusty morningstar']
+        
+        GameObject.__init__(self, dungeon, 0, 0, '@', 'Hero', colors.white, blocks=True, 
+                        fighter=fighter_component)
+    
+                        
+    def death(self):
+        #the game ended!
+        self.dungeon.game.message('You died!', colors.red)
+        self.dungeon.game.state = constants.STATE_DEAD
+        
+        logging.info('Died! State:%s, Player_Died:%s', self.dungeon.game.state, self.dungeon.player.fighter.died)
+     
+        #for added effect, transform the player into a corpse!
+        self.char = '%'
+        self.color = constants.color_dead
+            
+class Skeleton(GameObject):
+    #Skeleton monster GameObject
+    def __init__(self, dungeon, x, y):
+        skele_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
+            vision_range=constants.FOV_RADIUS_BAD)
+            
+        skele_fighter = Fighter(hp=6+dungeon.level, defense=1+dungeon.level, power=3+dungeon.level, 
+            speed=1, atk_speed=-0.34, death_function=self.death)
+            
+        skele_fighter.attack_verbs = ['rake', 'tear', 'claw']
+        skele_fighter.weapon_names = ['bony fingers', 'fleshless hands', 'sharp fingerbones']
+                 
+        GameObject.__init__(self, dungeon, x, y, 'S', 'Skeleton', colors.gray, blocks=True, 
+                 fighter=skele_fighter, ai=skele_ai, item=None)
+                 
+                 
+    def death(self):
+        #transform it into a nasty corpse! it doesn't block, can't be
+        #attacked and doesn't move
+        self.dungeon.game.message('The skeleton collapses into a pile of bones!', colors.orange)
+        
+        self.char = '%'
+        self.color = colors.dark_red
+        self.blocks = False
+        self.fighter = None
+        self.ai = None
+        self.name = 'pile of skeleton bones'
+        self.dungeon.send_to_back(self)
+                 
+class Zombie(GameObject):
+    #Zombie monster GameObject
+    def __init__(self, dungeon, x, y):
+        zombi_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
+            vision_range=constants.FOV_RADIUS_BAD)
+        
+        zombi_fighter = Fighter(hp=10+dungeon.level, defense=2+dungeon.level, power=5+dungeon.level,
+            speed=1.5, atk_speed = -0.5, death_function=self.death)
+        zombi_fighter.attack_verbs = ['slams', 'bashes', 'smacks']
+        zombi_fighter.weapon_names = ['rotting fist', 'twisted arm', 'decaying limb']
+        
+        GameObject.__init__(self, dungeon, x, y, 'Z', 'Zombie', colors.desaturated_green, blocks=True, 
+                 fighter=zombi_fighter, ai=zombi_ai, item=None)
+                 
+    def death(self):
+        #transform it into a nasty corpse! it doesn't block, can't be
+        #attacked and doesn't move
+        self.dungeon.game.message('The zombie crumples to the floor in a putrid mound of flesh!', colors.orange)
+        
+        self.char = '%'
+        self.color = colors.dark_red
+        self.blocks = False
+        self.fighter = None
+        self.ai = None
+        self.name = 'pile of zombie flesh'
+        self.dungeon.send_to_back(self)
+        
+        
+class Weapon:
+    def __init__(self, min_dmg, max_dmg, speed, attack_names, attack_verbs):
+        self.min_dmg = min_dmg
+        self.max_dmg = max_dmg
+        self.speed = speed
+        self.attack_names = attack_names
+        self.attack_verbs = attack_verbs
+        
+    def name(self):
+        return self.attack_names[0]
+        
+    def damage(self, base_power):
+        return  
             
 class Dungeon:
 
@@ -167,16 +317,16 @@ class Dungeon:
         self.inventory = []
         self.visible_tiles = []
         self.fov_recompute = True
+        self.level = 1
+        
+        # keeps track of turns passed (use monster/player speed to check when to act)
+        self.turn = 0
 
     def create_player(self):
         if self.player:
             del self.player
     
-        #create object representing the player
-        fighter_component = Fighter(hp=30, defense=2, power=5, 
-                                    death_function=self.player_death)
-        self.player = GameObject(self, 0, 0, '@', 'player', colors.white, blocks=True, 
-                        fighter=fighter_component)
+        self.player = Player(self, 0, 0)
         
         # player creates the objects list when made 'new'
         self.objects.append(self.player)
@@ -281,26 +431,12 @@ class Dungeon:
      
             #only place it if the tile is not blocked
             if not self.is_blocked(x, y):
-                if randint(0, 100) < 80:  #80% chance of getting an orc
-                    #create an orc
-                    fighter_component = Fighter(hp=10, defense=0, power=3, 
-                                                death_function=self.monster_death)
-                                                
-                    # random vision range for some variety
-                    ai_component = BasicMonster(self, constants.FOV_ALGO, randint(3, 6))
-     
-                    monster = GameObject(self, x, y, 'o', 'orc', colors.desaturated_green,
-                        blocks=True, fighter=fighter_component, ai=ai_component)
+                if randint(0, 100) < 65:  #65% chance of getting a skeleton
+                    #create a Skeleton
+                    monster = Skeleton(self, x, y)
                 else:
-                    #create a troll
-                    fighter_component = Fighter(hp=16, defense=1, power=4,
-                                                death_function=self.monster_death)
-                    
-                    # troll is better at tracking the player down
-                    ai_component = BasicMonster(self, constants.FOV_ALGO, randint(6, 10))
-     
-                    monster = GameObject(self, x, y, 'T', 'troll', colors.darker_green,
-                        blocks=True, fighter=fighter_component, ai=ai_component)
+                    #create a Zombie
+                    monster = Zombie(self, x, y)
      
                 self.objects.append(monster)
      
@@ -322,26 +458,26 @@ class Dungeon:
                     item = GameObject(self, x, y, '!', 'healing potion', 
                                       colors.violet, item=item_component)
      
-                elif dice < 70+10:
+                elif dice < 85:
                     #create a lightning bolt scroll (15% chance)
                     item_component = Item(use_function=self.cast_lightning)
      
                     item = GameObject(self, x, y, '#', 'scroll of lightning bolt', 
                                       colors.light_yellow, item=item_component)
      
-                elif dice < 70+10+10:
-                    #create a fireball scroll (10% chance)
+                else:
+                    #create a fireball scroll (15% chance)
                     item_component = Item(use_function=self.cast_fireball)
      
                     item = GameObject(self, x, y, '#', 'scroll of fireball', 
                                       colors.light_yellow, item=item_component)
      
-                else:
+                #else:
                     #create a confuse scroll (15% chance)
-                    item_component = Item(use_function=self.cast_confuse)
+                    #item_component = Item(use_function=self.cast_confuse)
      
-                    item = GameObject(self, x, y, '#', 'scroll of confusion', 
-                                      colors.light_yellow, item=item_component)
+                    #item = GameObject(self, x, y, '#', 'scroll of confusion', 
+                    #                  colors.light_yellow, item=item_component)
      
                 self.objects.append(item)
                 self.send_to_back(item)  #items appear below other self.objects
@@ -472,52 +608,31 @@ class Dungeon:
                 target = obj
                 break
         
-        acted = False
+        turns_used = 0
         
         #attack if target found, move otherwise
         if target is not None:
             self.player.fighter.attack(target)
-            acted = True
+            turns_used = self.player.fighter.speed + self.player.fighter.atk_speed
         else:
             acted = self.move(self.player, dx, dy)
             if acted:
+                turns_used = self.player.fighter.speed
                 self.fov_recompute = True
         
-        return acted
+        return turns_used
 
     def player_wait(self):
         self.game.message('You wait.')
         
-    def player_death(self, player):
-        #the game ended!
-        self.game.message('You died!', colors.red)
-        self.game.state = constants.STATE_DEAD
-        self.game.player_died = True
-        
-        logging.debug('Died! State:%s, Player_Died:%s', self.game.state, self.game.player_died)
-     
-        #for added effect, transform the player into a corpse!
-        self.player.char = '%'
-        self.player.color = colors.dark_red
-        
-    def ai_act(self):
-        for obj in self.objects:
-            if obj.ai:
-                obj.ai.take_turn()
-     
-    def monster_death(self, monster):
-        #transform it into a nasty corpse! it doesn't block, can't be
-        #attacked and doesn't move
-        self.game.message(monster.name.capitalize() + ' is dead!', colors.orange)
-        
-        monster.char = '%'
-        monster.color = colors.dark_red
-        monster.blocks = False
-        monster.fighter = None
-        monster.ai = None
-        monster.name = 'remains of ' + monster.name
-        monster.dungeon.send_to_back(monster)
-
+    def ai_act(self, turns_passed):
+        # advance dungeon 'clock'
+        self.turn += turns_passed
+        logging.info('%s turns passed in dungeon', self.turn)
+        # ai acts based on current turns passed
+        for ftr in [obj.fighter for obj in self.objects if obj.fighter]:
+            # ai will take turns, player will only update last_turn counter
+            ftr.pass_time()
 
      ### CAST SPELLS ###
     def cast_heal(self):
@@ -527,7 +642,7 @@ class Dungeon:
             return 'cancelled'
      
         self.game.message('Your wounds start to feel better!', colors.light_violet)
-        self.player.fighter.heal(constants.HEAL_AMOUNT)
+        self.player.fighter.heal(constants.HEAL_AMOUNT+self.level)
      
     def cast_lightning(self):
         #find closest enemy (inside a maximum range) and damage it
@@ -537,28 +652,27 @@ class Dungeon:
             return 'cancelled'
      
         #zap it!
-        self.game.message('A lighting bolt strikes the ' + monster.name + ' with a loud ' +
-                'thunder! The damage is ' + str(constants.LIGHTNING_DAMAGE) + ' hit points.', 
+        self.game.message('A lighting bolt arcs towards the ' + monster.name + ' with a loud thunder!', 
                 colors.light_blue)
      
-        monster.fighter.take_damage(constants.LIGHTNING_DAMAGE)
+        monster.fighter.take_damage('Magical lightning', choice(['strikes', 'zaps', 'fries']), 'electricity', colors.light_blue, constants.LIGHTNING_DAMAGE)
      
-    def cast_confuse(self):
-        #ask the player for a target to confuse
-        self.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
-                colors.light_cyan)
-        monster = self.game.target_monster(constants.CONFUSE_RANGE)
-        if monster is None:
-            self.game.message('Cancelled')
-            return 'cancelled'
+    # def cast_confuse(self):
+        # #ask the player for a target to confuse
+        # self.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
+                # colors.light_cyan)
+        # monster = self.game.target_monster(constants.CONFUSE_RANGE)
+        # if monster is None:
+            # self.game.message('Cancelled')
+            # return 'cancelled'
      
-        #replace the monster's AI with a "confused" one; after some turns it will 
-        #restore the old AI
-        old_ai = monster.ai
-        monster.ai = ConfusedMonster(old_ai)
-        monster.ai.owner = monster  #tell the new component who owns it
-        self.game.message('The eyes of the ' + monster.name + ' look vacant, as he starts to ' +
-                'stumble around!', colors.light_green)
+        # #replace the monster's AI with a "confused" one; after some turns it will 
+        # #restore the old AI
+        # old_ai = monster.ai
+        # monster.ai = ConfusedMonster(old_ai)
+        # monster.ai.owner = monster  #tell the new component who owns it
+        # self.game.message('The eyes of the ' + monster.name + ' look vacant, as he starts to ' +
+                # 'stumble around!', colors.light_green)
      
     def cast_fireball(self):
         #ask the player for a target tile to throw a fireball at
@@ -574,10 +688,7 @@ class Dungeon:
      
         for obj in self.objects:  #damage every fighter in range, including the player
             if self.distance(obj, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
-                self.game.message('The ' + obj.name + ' gets burned for ' + 
-                        str(constants.FIREBALL_DAMAGE) + ' hit points.', colors.orange)
-     
-                obj.fighter.take_damage(constants.FIREBALL_DAMAGE)
+                obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flames', 'heat']), colors.orange, constants.FIREBALL_DAMAGE)
 
  
     def send_to_back(self, game_obj):
@@ -606,8 +717,6 @@ class BasicMonster:
         self.owner = None
 
     def take_turn(self):
-        global logger
-    
         #a basic monster takes its turn.
         monster = self.owner
         
@@ -620,7 +729,7 @@ class BasicMonster:
                                          
                                          #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
         
-        #logging.debug('BasicMonster.owner.name = %s, BasicMonster.dungeon.player = %s', self.owner.name, self.dungeon.player)
+        logging.debug('BasicMonster.owner.name = %s, BasicMonster.dungeon.player = %s', self.owner.name, self.dungeon.player)
         
         if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
 
@@ -628,30 +737,15 @@ class BasicMonster:
             if self.dungeon.distance_to(monster, self.dungeon.player) >= 2:
                 #monster.move_towards(player.x, player.y)
                 self.dungeon.move_astar(monster, self.dungeon.player)
+                return monster.fighter.speed
 
             #close enough, attack! (if the player is still alive.)
             elif self.dungeon.player.fighter.hp > 0:
                 monster.fighter.attack(self.dungeon.player)
-        
- 
-class ConfusedMonster:
-    #AI for a temporarily confused monster (reverts to previous AI after a while).
-    def __init__(self, old_ai, num_turns=constants.CONFUSE_NUM_TURNS):
-        self.old_ai = old_ai
-        self.num_turns = num_turns
-        self.dungeon = old_ai.dungeon
- 
-    def take_turn(self):
-        if self.num_turns > 0:  #still confused...
-            #move in a random direction, and decrease the number of turns confused
-            self.dungeon.move(self.owner, randint(-1, 1), randint(-1, 1))
-            self.num_turns -= 1
- 
-        else:  
-            #restore the previous AI (this one will be deleted because it's not 
-            #referenced anymore)
-            self.owner.ai = self.old_ai
-            self.dungeon.game.message('The ' + self.owner.name + ' is no longer confused!', colors.red)
+                return monster.fighter.speed + monster.fighter.atk_speed
+                
+        else:
+            return monster.fighter.speed
             
 ### callback functions ###
 def is_visible_tile(x, y):

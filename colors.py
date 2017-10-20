@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # grey levels
 black=(0,0,0)
 darkest_grey=(31,31,31)
@@ -218,3 +220,10 @@ silver=(203,203,203)
 # miscellaneous
 celadon=(172,255,175)
 peach=(255,159,127)
+
+# utility function
+def mutate_color(start_color, end_color, fraction):
+    t = []
+    for i in range(3):
+        t.append(start_color[i] + int((end_color[i] - start_color[i]) * fraction))
+    return tuple(t)

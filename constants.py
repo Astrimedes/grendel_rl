@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env pytthon3
+import colors
 
 #actual size of the window
 SCREEN_WIDTH = 80
@@ -28,7 +29,7 @@ MAX_ROOM_ITEMS = 2
 DEFAULT_PATHSIZE = 25
  
 #spell values
-HEAL_AMOUNT = 4
+HEAL_AMOUNT = 6
 LIGHTNING_DAMAGE = 20
 LIGHTNING_RANGE = 5
 CONFUSE_RANGE = 8
@@ -38,6 +39,8 @@ FIREBALL_DAMAGE = 12
  
 # game / map settings
 FOV_ALGO = 'SHADOW' # was 'BASIC'
+FOV_ALGO_BAD = 'PERMISSIVE8'
+FOV_RADIUS_BAD = 5
 FOV_LIGHT_WALLS = True
 TORCH_RADIUS = 5 #was 10
 
@@ -55,7 +58,15 @@ STATE_DEAD = 'dead'
 STATE_EXIT = 'exit'
 
 # map colors
-color_dark_wall = (0, 0, 100)
-color_light_wall = (130, 110, 50)
-color_dark_ground = (50, 50, 150)
-color_light_ground = (200, 180, 50)
+color_dark_ground = colors.dark_azure
+color_dark_wall = colors.darkest_azure
+
+color_light_ground = colors.amber
+color_light_wall = colors.dark_amber
+
+# player colors
+color_dead = colors.dark_crimson
+
+# health 'thresholds'
+THRESH_HEALTH = (1, 0.75, 0.5, 0.25)
+THRESH_COLORS = (colors.white, colors.lightest_gray, colors.yellow, colors.red)

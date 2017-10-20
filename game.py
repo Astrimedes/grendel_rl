@@ -9,15 +9,18 @@ import shelve
 
 import constants
 import dungeon
-import colors 
+import colors
+import controls
+
+import time
 
 import logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class TurnEvent:
     # information about what transpired while resolving player input (did a turn pass?)
-    def __init__(self, turn_passed = False, description = ''):
-        self.turn = turn_passed
+    def __init__(self, turns_used, description = ''):
+        self.turns_used = turns_used
         self.description = description
 
 class Game:
@@ -26,15 +29,14 @@ class Game:
         self.root_console = None
         self.state = None
         self.dungeon = None
-        self.messages = None
+        self.messages = []
         self.message_panel = None
         self.mouse_coord = None
-        self.player_died = False
     
     ### SAVE AND LOAD GAME ###
     def save_game(self):
         
-        if self.dungeon and self.dungeon.player and not self.player_died:
+        if self.dungeon and self.dungeon.player and not self.dungeon.player.fighter.died and self.dungeon.player.fighter.hp > 0:
             #open a new empty shelve (possibly overwriting an old one) to write the game data
             with shelve.open('savegame', 'n') as savefile:
                 savefile['map'] = self.dungeon.map
@@ -43,12 +45,21 @@ class Game:
                 savefile['inventory'] = self.dungeon.inventory
                 savefile['messages'] = self.messages
         else:
-            logging.debug("Dead: clearing save file...")
+            logging.info("Dead: clearing save file...")
             shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
             
-            logging.debug("Shelf contents: %s", shelf)
+            logging.info("Shelf contents: %s", shelf)
             shelf.close()
-     
+    
+    def savegame_exists(self):
+        try:
+            savefile = shelve.open('savegame', 'r')
+            if savefile:
+                    savefile.close()
+                    return True
+            return False
+        except:
+            return False
      
     def load_game(self):
         #open the previously saved shelve and load the game data
@@ -58,11 +69,10 @@ class Game:
         
         self.dungeon = dungeon.Dungeon(self)
         
-        #logging.debug('Before Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
-     
-        with shelve.open('savegame', 'r') as savefile:
-            if savefile:
-                try:
+        logging.debug('Before Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
+        try:
+            with shelve.open('savegame', 'r') as savefile:
+                if savefile:
                     self.dungeon.map = savefile['map']
                     self.dungeon.objects = savefile['objects']
                     self.dungeon.player = self.dungeon.objects[savefile['player_index']]  #get index of player in objects list and access it
@@ -74,10 +84,10 @@ class Game:
                         self.state = constants.STATE_DEAD
                     logging.debug('After Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
                     return True
-                except:
+                else:
                     return False
-            else:
-                return False
+        except:
+            return False
      
     ### NEW GAME ###
     def new_game(self):
@@ -109,11 +119,13 @@ class Game:
         
         while not tdl.event.is_window_closed():
         
-            # if not action:
-                # desc = 'None'
-            # else:
-                # desc = action.description
-            # logging.debug('play_game, state = %s, action = %s', self.state, desc)
+            if not action:
+                desc = 'None'
+            else:
+                desc = action.description
+            logging.debug('play_game, state = %s, action = %s', self.state, desc)
+            
+            logging.debug('%s - action taken', desc)
      
             #draw all objects in the list
             if self.dungeon:
@@ -125,8 +137,8 @@ class Game:
      
             if self.state == constants.STATE_PLAYING:
                 #let monsters take their turn: during play state, when a turn has passed
-                if action.turn:
-                    self.dungeon.ai_act()
+                if action.turns_used > 0:
+                    self.dungeon.ai_act(action.turns_used)
                 
             #exit if player pressed exit
             elif self.state == constants.STATE_EXIT:
@@ -159,18 +171,35 @@ class Game:
             tdl.flush()
      
             #show options and wait for the player's choice
-            choice = self.menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
+            
+            save_exists = self.savegame_exists()
+            PLAY = 0
+            if save_exists:
+                LOAD = 1
+                EXIT = 2
+                choice = self.menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
+            else:
+                LOAD = -999999
+                EXIT = 1
+                choice = self.menu('', ['Play a new game', 'Quit'], 24)            
      
-            if choice == 0:  #new game
+            if choice == PLAY:
                 self.new_game()
                 self.play_game()
-            if choice == 1:  #load last game
+            elif choice == LOAD:
                 if self.load_game():
                     self.play_game()
                 else:
-                    choice = self.menu('', ['No saved game to load!'], 24)
-            elif choice == 2:  #quit
-                logging.debug('Player quit.')
+                    c = self.menu('No saved game to load!', ['Start new game', 'Quit'], 24)
+                    logging.info('Chose %s', c)
+                    if c == 0:
+                        self.new_game()
+                        self.play_game()
+                    elif c == 1:
+                        logging.info('Player quit.')
+                        return
+            elif choice == EXIT:
+                logging.info('Player quit.')
                 break
                 
     def clear_all(self):
@@ -183,7 +212,8 @@ class Game:
     ### LAUNCH GAME ###
     def game_start(self):
 
-        tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
+        #tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
+        tdl.set_font('terminal16x16.png', greyscale=True)
         self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
                         fullscreen=False)
         self.map_console = tdl.Console(constants.MAP_WIDTH, constants.MAP_HEIGHT)
@@ -249,6 +279,7 @@ class Game:
      
         #present the root_console console to the player and wait for a key-press
         tdl.flush()
+        
         key = tdl.event.key_wait()
         key_char = key.char
         if key_char == '':
@@ -260,6 +291,7 @@ class Game:
      
         #convert the ASCII code to an index; if it corresponds to an option, return it
         index = ord(key_char) - ord('a')
+        logging.info('Pressed key %s, index %s', key.char, index)
         if index >= 0 and index < len(options):
             return index
         return None
@@ -314,8 +346,7 @@ class Game:
         (x, y) = self.mouse_coord
         
         #create a list with the names of all objects at the mouse's coordinates and in FOV
-        names = [obj.name for obj in self.dungeon.objects
-            if obj.x == x and obj.y == y and (obj.x, obj.y) in self.dungeon.visible_tiles]
+        names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
             
         names = ', '.join(names)  #join the names, separated by commas
         return names.capitalize() 
@@ -341,79 +372,84 @@ class Game:
             if event.type == 'KEYDOWN':
                 user_input = event
                 keypress = True
+                logging.debug('Key press detected!')
             if event.type == 'MOUSEMOTION':
-                mouse_coord = event.cell
+                self.mouse_coord = event.cell
+                logging.debug("Mouse coord: %s", self.mouse_coord)
      
         if not keypress:
-            return TurnEvent(False, 'No key press')
+            return TurnEvent(0, 'No key press')
      
         if user_input.key == 'ENTER' and user_input.alt:
             #Alt+Enter: toggle fullscreen
             tdl.set_fullscreen(not tdl.get_fullscreen())
-            return TurnEvent(False, 'Full screen toggle')
+            return TurnEvent(0, 'Full screen toggle')
      
         elif user_input.key == 'ESCAPE':
             self.exit_game()
-            return TurnEvent(False, 'exiting')  #exit game
+            return TurnEvent(0, 'exiting')  #exit game
      
         if self.state == constants.STATE_PLAYING and not(self.dungeon.player.fighter.died):
         
+            logging.debug('Pressed key %s , text %s', user_input.key, user_input.text)
+            
             #movement keys
             #up left
-            if user_input.key == 'KP7':
+            if controls.up_left(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(-1, -1), 'moved')
             #up
-            elif user_input.key == 'UP' or user_input.key == 'KP8':
+            elif controls.up(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(0, -1), 'moved')
             #up right
-            elif user_input.key == 'KP9':
+            elif controls.up_right(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(1, -1), 'moved')
             #left
-            elif user_input.key == 'LEFT' or user_input.key == 'KP4':
+            elif controls.left(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(-1, 0), 'moved')
             #right
-            elif user_input.key == 'RIGHT' or user_input.key == 'KP6':
+            elif controls.right(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(1, 0), 'moved')
             #down left
-            if user_input.key == 'KP1':
+            elif controls.down_left(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(-1, 1), 'moved')
             #down
-            elif user_input.key == 'DOWN' or user_input.key == 'KP2':
+            elif controls.down(user_input) or user_input.key == 'KP2':
                 return TurnEvent(self.dungeon.player_move_or_attack(0, 1), 'moved')
             #down right
-            elif user_input.key == 'KP3':
+            elif controls.down_right(user_input):
                 return TurnEvent(self.dungeon.player_move_or_attack(1, 1), 'moved')
             # Rest for 1 turn
-            elif user_input.key == 'KP5':
+            elif controls.wait(user_input):
                 self.dungeon.player_wait()
-                return TurnEvent(True, 'waited')
+                return TurnEvent(self.dungeon.player.fighter.speed, 'waited')
+            # pick up an item
+            elif controls.pick_up(user_input):
+                #pick up an item
+                for obj in self.dungeon.objects:  #look for an item in the player's tile
+                    if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
+                        self.dungeon.pick_up(obj.item)
+                        return TurnEvent(self.dungeon.player.fighter.speed, 'picked up item')
+            # inventory
+            elif controls.inventory(user_input):
+                #show the inventory; if an item is selected, use it
+                chosen_item = self.inventory_menu('Press the key next to an item to ' +
+                                             'use it, or any other to cancel.\n')
+                if chosen_item is not None:
+                    turns = 0
+                    if chosen_item.use():
+                        turns = self.dungeon.player.fighter.speed
+                    return TurnEvent(turns, 'used item')
+            # drop an item show the inventory; if an item is selected, drop it
+            elif controls.drop(user_input):
+                chosen_item = self.inventory_menu('Press the key next to an item to' + 
+                'drop it, or any other to cancel.\n')
+                if chosen_item is not None:
+                    chosen_item.drop()
+                    return TurnEvent(self.dungeon.player.fighter.speed, 'dropped item')
             else:
-                #test for other keys
-                if user_input.text == 'g':
-                    #pick up an item
-                    for obj in self.dungeon.objects:  #look for an item in the player's tile
-                        if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
-                            self.dungeon.pick_up(obj.item)
-                            return TurnEvent(True, 'picked up item')
-     
-                if user_input.text == 'i':
-                    #show the inventory; if an item is selected, use it
-                    chosen_item = self.inventory_menu('Press the key next to an item to ' +
-                                                 'use it, or any other to cancel.\n')
-                    if chosen_item is not None:
-                        return TurnEvent(chosen_item.use(), 'used item')
-     
-                if user_input.text == 'd':
-                    #show the inventory; if an item is selected, drop it
-                    chosen_item = inventory_menu('Press the key next to an item to' + 
-                    'drop it, or any other to cancel.\n')
-                    if chosen_item is not None:
-                        chosen_item.drop()
-                        return TurnEvent(True, 'dropped item')
-     
-                return TurnEvent(False, 'didnt-take-turn')
+                return TurnEvent(0, 'invalid key: didnt-take-turn')
                 
-        return TurnEvent(False, 'game not in Playing state')
+        return TurnEvent(0, 'game not in Playing state or action cancelled')
     
     
     ### RENDERING ###
