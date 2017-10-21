@@ -313,10 +313,16 @@ class Game:
     ### INVENTORY ###
     def inventory_menu(self, header):
         #show a menu with each item of the inventory as an option
-        if len(self.dungeon.inventory) == 0:
+        weapon = self.dungeon.player.weapon()
+        if len(self.dungeon.inventory) == 0 and not weapon:
             options = ['Inventory is empty.']
         else:
-            options = [item.owner.name for item in self.dungeon.inventory]
+            options = []
+            for item in self.dungeon.inventory:
+                if item == weapon:
+                    options.append(item.name() + '----[Equipped Weapon]')
+                else:
+                    options.append(item.name())
      
         index = self.menu(header, options, constants.INVENTORY_WIDTH)
         logging.info('Inventory: chose index %s', index)

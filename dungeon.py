@@ -19,6 +19,8 @@ import math
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+CANCEL = 'cancelled'
+
 _dungeon = None
 
 class Rect:
@@ -66,6 +68,9 @@ class Item:
         self.owner.x = player.x
         self.owner.y = player.y
         _dungeon.game.message('You dropped a ' + self.owner.name + '.', colors.yellow)
+    
+    def name(self):
+        return self.owner.name
  
     def use(self):
         #just call the "use_function" if it is defined
@@ -73,7 +78,7 @@ class Item:
             _dungeon.game.message('The ' + self.owner.name + ' cannot be used.')
             return False
         else:
-            if self.use_function() != 'cancelled':
+            if self.use_function() != CANCEL:
                 _dungeon.inventory.remove(self)  #destroy after use, unless it was 
                                               #cancelled for some reason
                 return True
@@ -201,23 +206,31 @@ class Fighter:
     def attack(self, target):
     
         if not self.weapon:
+            logging.debug('%s No weapon equipped', self.owner.name)
             #a simple formula for attack damage
-            damage = randint((self.power//2)+self.owner.dungeon.level, self.power+self.owner.dungeon.level+1) - target.fighter.defense
+            damage = randint((self.power//2)+_dungeon.level, self.power+_dungeon.level+1) - target.fighter.defense
+        else:
+            damage = self.weapon.roll_dmg(self, target.fighter)
             
-            atk_color = colors.light_red
-            if self.owner == self.owner.dungeon.player:
-                atk_color = colors.light_blue
+        atk_color = colors.light_red
+        if self.owner == self.owner.dungeon.player:
+            atk_color = colors.light_blue
         
-            if damage > 0:
-                #make the target take some damage
+        if damage > 0:
+            #make the target take some damage
+            if not self.weapon:
                 target.fighter.take_damage(self.owner.name.capitalize(), choice(self.attack_verbs), choice(self.weapon_names), atk_color, damage)
             else:
-                self.owner.dungeon.game.message(self.owner.name.capitalize() + ' attacks ' + target.name + 
-                      ' but it has no effect!')
+                target.fighter.take_damage(self.owner.name.capitalize(), self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
+        else:
+            self.owner.dungeon.game.message(self.owner.name.capitalize() + ' attacks ' + target.name + 
+                  ' but it has no effect!')
                       
-            # add atk speed
+            # add atk speed for monsters (player's last_turn is set based on his already-added atk_spd at turn advancement)
             if not self.owner == self.owner.dungeon.player:
                 self.last_turn += self.atk_speed
+                if self.weapon:
+                    self.last_turn += self.weapon.speed
  
     def heal(self, amount):
         #heal by the given amount, without going over the maximum
@@ -238,6 +251,10 @@ class Player(GameObject):
         
         GameObject.__init__(self, dungeon, 0, 0, '@', 'Hero', colors.white, blocks=True, 
                         fighter=fighter_component)
+                        
+                        
+    def weapon(self):
+        return self.fighter.weapon
     
                         
     def death(self):
@@ -309,9 +326,9 @@ class Zombie(GameObject):
         
         
 class Weapon(Item):
-    def __init__(self, min_dmg, max_dmg, speed, attack_names, attack_verbs):
+    def __init__(self, min_dmg=1, max_dmg=6, speed=0, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits']):
         
-        Item.__init__(self, use_function=use)
+        Item.__init__(self)
         
         self.min_dmg = min_dmg
         self.max_dmg = max_dmg
@@ -319,26 +336,32 @@ class Weapon(Item):
         self.attack_names = attack_names
         self.attack_verbs = attack_verbs
         
+    def roll_dmg(self, owner_ftr, target_ftr):
+        return randint(self.min_dmg, self.max_dmg) + (owner_ftr.power//2) - target_ftr.defense
+    
+    #override Item
     def name(self):
         return self.attack_names[0]
         
-    def use(self):
-    
+    def atk_name(self):
+        return choice(self.attack_names)
         
+    def atk_verb(self):
+        return choice(self.attack_verbs)
         
-        #just call the "use_function" if it is defined
-        if self.use_function is None:
-            _dungeon.game.message('The ' + self.owner.name + ' cannot be used.')
-            return False
-        else:
-            if self.use_function() != 'cancelled':
-                _dungeon.inventory.remove(self)  #destroy after use, unless it was 
-                                              #cancelled for some reason
-                return True
+    def equip(self, fighter):
+        if not fighter.weapon is self:
+            fighter.weapon = self
+            _dungeon.game.message(fighter.owner.name + ' wields a ' + self.name() + '!', colors.white)
+            return True
         return False
         
-    def damage(self, base_power):
-        return  
+    # override Item: equip from player's inventory and don't consume item
+    def use(self):
+        if not self.equip(_dungeon.player.fighter):
+            _dungeon.game.message('You are already using the ' + self.name() + '!')
+            return False
+        return True
             
 class Dungeon:
 
@@ -375,6 +398,7 @@ class Dungeon:
         self.inventory.append(HealingPotion().item)
         self.inventory.append(LightningScroll().item)
         self.inventory.append(FireballScroll().item)
+        self.inventory.append(Weapon())
             
     ### MAP CREATION ###
     def make_map(self):
@@ -674,12 +698,12 @@ class Dungeon:
         if target is not None:
             self.player.fighter.attack(target)
             turns_used = self.player.fighter.speed + self.player.fighter.atk_speed
+            if self.player.fighter.weapon:
+                turns_used += self.player.fighter.weapon.speed
         else:
-            acted = self.move(self.player, dx, dy)
-            if acted:
+            if self.move(self.player, dx, dy):
                 turns_used = self.player.fighter.speed
                 self.fov_recompute = True
-        
         return turns_used
 
     def player_wait(self):
