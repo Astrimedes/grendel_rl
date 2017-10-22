@@ -130,14 +130,6 @@ class Game:
         self.mouse_coord = (0, 0)
         
         while not tdl.event.is_window_closed():
-        
-            if not action:
-                desc = 'None'
-            else:
-                desc = action.description
-            logging.debug('play_game, state = %s, action = %s', self.state, desc)
-            
-            logging.debug('%s - action taken', desc)
      
             #draw all objects in the list
             if self.dungeon:
@@ -147,6 +139,20 @@ class Game:
                 
             #handle keys and exit game if needed
             action = self.handle_keys()
+            
+            if not action:
+                desc = 'None'
+            else:
+                desc = action.description
+                #report item names on tile if applicable
+                if action.description == constants.MOVE or action.description == constants.PICK_UP:
+                    names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
+                    if names:
+                        self.message('You see items here: ' + names + '. Press g to pick up.')
+                
+            logging.debug('play_game, state = %s, action = %s', self.state, desc)
+            
+            logging.debug('%s - action taken', desc)
      
             if self.state == constants.STATE_PLAYING:
                 #let monsters take their turn: during play state, when a turn has passed
@@ -162,24 +168,26 @@ class Game:
     def main_menu(self):
         
         img = tcod.image_load(constants.MENU_BACKGROUND)
+        x = round((((constants.SCREEN_WIDTH * constants.TILE_SIZE)/2) - img.width) / 2 / constants.TILE_SIZE)
+        y = 0
      
         while not tdl.event.is_window_closed():
         
             self.clear_all()
         
             #show the title image
-            xcenter = (constants.SCREEN_WIDTH) // 2
-            ycenter = (constants.SCREEN_HEIGHT) // 2
-            img.blit(self.root_console, xcenter, ycenter, tcod.BKGND_SET, 0.5, 0.5, 0)
+            
+            #img.blit(self.root_console, xcenter, ycenter, tcod.BKGND_SET, 0.25, 0.25, 0)
+            img.blit_2x(self.root_console, x, y)
             
             #show the game's title, and some credits!
             title = constants.TITLE
             center = (constants.SCREEN_WIDTH - len(title)) // 2
-            self.root_console.draw_str(center, constants.SCREEN_HEIGHT//2-4, title, bg=None, fg=colors.light_yellow)
+            self.root_console.draw_str(center, constants.SCREEN_HEIGHT//2-4, title, bg=None, fg=colors.dark_azure)
             
             title = 'By ' + constants.AUTHOR
             center = (constants.SCREEN_WIDTH - len(title)) // 2
-            self.root_console.draw_str(center, constants.SCREEN_HEIGHT-2, 'By Astrimedes', bg=None, fg=colors.light_yellow)
+            self.root_console.draw_str(center, constants.SCREEN_HEIGHT-2, 'By Astrimedes', bg=None, fg=colors.dark_azure)
             
             tdl.flush()
      
@@ -204,7 +212,7 @@ class Game:
                     self.play_game()
                 else:
                     c = self.menu('No saved game to load!', ['Start new game', 'Quit'], 24)
-                    logging.info('Chose %s', c)
+                    logging.debug('Chose %s', c)
                     if c == 0:
                         self.new_game()
                         self.play_game()
@@ -304,7 +312,7 @@ class Game:
      
         #convert the ASCII code to an index; if it corresponds to an option, return it
         index = ord(key_char) - ord('a')
-        logging.info('Pressed key %s, index %s', key.char, index)
+        logging.debug('Pressed key %s, index %s', key.char, index)
         if index >= 0 and index < len(options):
             return index
         return None
@@ -371,14 +379,14 @@ class Game:
             
                 self.render_all()
                 
-                logging.info('(%s,%s) mouse move', x, y)
+                logging.debug('(%s,%s) mouse move', x, y)
                 # set last value 
                 last_coord = self.mouse_coord
                 if (x,y) in self.dungeon.visible_tiles:
                     # render new target area
                     if not(self.dungeon.map[x][y].blocked) and (not(max_range) or (self.dungeon.distance(self.dungeon.player, x, y) <= max_range)):
                         self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_target)
-                        logging.info('drew to %s',last_coord)
+                        logging.debug('drew to %s',last_coord)
                         if target_size > 0:
                             #target on map
                             target = tdl.map.quickFOV(x, y, self.dungeon.is_visible_tile,
@@ -401,12 +409,30 @@ class Game:
     def get_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
         (x, y) = self.mouse_coord
+        return self.get_names_at(x, y)
         
+    def get_names_at(self, x, y):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
             
         names = ', '.join(names)  #join the names, separated by commas
         return names.capitalize() 
+        
+    def get_item_names_at(self, x, y):
+        #create a list with the names of all Items at the mouse's coordinates and in FOV
+        names = []
+        
+        hasitems = False
+        items = [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y)]
+        for itm in items:
+            if itm:
+                hasitems = True
+                names.append(itm.name().capitalize())
+        
+        if hasitems:
+            return ', '.join(names)
+        else:
+            return None
         
     def target_monster(self, max_range=None):
         #returns a clicked monster inside FOV up to a range, or None if right-clicked
@@ -453,39 +479,39 @@ class Game:
             #movement keys
             #up left
             if controls.up_left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, -1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(-1, -1), constants.MOVE)
             #up
             elif controls.up(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(0, -1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(0, -1), constants.MOVE)
             #up right
             elif controls.up_right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, -1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(1, -1), constants.MOVE)
             #left
             elif controls.left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, 0), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(-1, 0), constants.MOVE)
             #right
             elif controls.right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, 0), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(1, 0), constants.MOVE)
             #down left
             elif controls.down_left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, 1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(-1, 1), constants.MOVE)
             #down
             elif controls.down(user_input) or user_input.key == 'KP2':
-                return TurnEvent(self.dungeon.player_move_or_attack(0, 1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(0, 1), constants.MOVE)
             #down right
             elif controls.down_right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, 1), 'moved')
+                return TurnEvent(self.dungeon.player_move_or_attack(1, 1), constants.MOVE)
             # Rest for 1 turn
             elif controls.wait(user_input):
                 self.dungeon.player_wait()
-                return TurnEvent(self.dungeon.player.fighter.speed, 'waited')
+                return TurnEvent(self.dungeon.player.fighter.speed, constants.WAIT)
             # pick up an item
             elif controls.pick_up(user_input):
                 #pick up an item
                 for obj in self.dungeon.objects:  #look for an item in the player's tile
                     if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
                         self.dungeon.pick_up(obj.item)
-                        return TurnEvent(self.dungeon.player.fighter.speed, 'picked up item')
+                        return TurnEvent(self.dungeon.player.fighter.speed, constants.PICK_UP)
             # inventory
             elif controls.inventory(user_input):
                 #show the inventory; if an item is selected, use it
@@ -495,14 +521,14 @@ class Game:
                     turns = 0
                     if chosen_item.use():
                         turns = self.dungeon.player.fighter.speed
-                    return TurnEvent(turns, 'used item')
+                    return TurnEvent(turns, constants.USE)
             # drop an item show the inventory; if an item is selected, drop it
             elif controls.drop(user_input):
                 chosen_item = self.inventory_menu('Press the key next to an item to' + 
                 'drop it, or any other to cancel.\n')
                 if chosen_item is not None:
                     chosen_item.drop()
-                    return TurnEvent(self.dungeon.player.fighter.speed, 'dropped item')
+                    return TurnEvent(self.dungeon.player.fighter.speed, constants.DROP)
             else:
                 return TurnEvent(0, 'invalid key: didnt-take-turn')
                 
@@ -527,7 +553,7 @@ class Game:
         self.message_panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
      
     def render_all(self):
-        logging.info('render_all')
+        logging.debug('render_all')
         
         if self.dungeon.fov_recompute:
             self.dungeon.fov_recompute = False
