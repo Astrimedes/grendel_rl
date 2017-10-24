@@ -39,6 +39,8 @@ class Game:
         self.total_time = time.process_time()
         self.last_command = None
         self.last_command_time = -999
+        
+        self.menu_invoked = False
     
     ### SAVE AND LOAD GAME ###
     def save_game(self):
@@ -163,7 +165,7 @@ class Game:
                     #avoid numpad's numlock-on multi key press sending 2 keys to repeat the action
                     moved = desc in [constants.MOVE_1, constants.MOVE_2, constants.MOVE_3, constants.MOVE_4, 
                         constants.MOVE_6, constants.MOVE_7, constants.MOVE_8, constants.MOVE_9]
-                    if moved or desc in [constants.PICK_UP, constants.DROP, constants.INVENTORY]:
+                    if moved or desc in [constants.PICK_UP, constants.DROP, constants.INVENTORY, constants.WAIT]:
                         if desc == self.last_command:
                             delta = newtime - self.last_command_time
                         
@@ -171,6 +173,8 @@ class Game:
                         self.last_command = desc
                         if delta < constants.INPUT_REPEAT_DELAY:
                             logging.info('COMMAND %s: delta (%s) < allowed delay (%s)', desc, delta, constants.INPUT_REPEAT_DELAY)
+                            time.sleep(constants.INPUT_REPEAT_DELAY)
+                            tdl.flush()
                             continue
                         else:
                             logging.info('desc = %s, %s = last_command, %s delta, %s total time', desc, self.last_command, delta, self.total_time)
@@ -182,10 +186,12 @@ class Game:
                         elif desc == constants.DROP:
                             self.do_drop(action)
                         elif desc == constants.PICK_UP:
-                            picked_up = True
-                            self.do_pickup(action)
+                            picked_up = self.do_pickup(action)
                         elif desc == constants.INVENTORY:
                             self.do_inventory_use(action)
+                        elif desc == constants.WAIT:
+                            self.dungeon.player_wait()
+                            
                         #report item names on tile if applicable
                         if moved or picked_up:
                             names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
@@ -343,6 +349,9 @@ class Game:
      
         #present the root_console console to the player and wait for a key-press
         tdl.flush()
+        
+        # mark as having brought up a menu (ignore this input event after processing here)
+        self.menu_invoked = True
         
         key = tdl.event.key_wait()
         key_char = key.char
@@ -526,8 +535,8 @@ class Game:
             if self.state == constants.STATE_PLAYING and not(self.dungeon.player.fighter.died):
             
                 # ignore menu input carrying through
-                if self.last_command == constants.INVENTORY or self.last_command == constants.DROP:
-                    self.last_command = None
+                if self.menu_invoked:
+                    self.menu_invoked = False
                     return
             
                 logging.info('Turn %s: Pressed key %s , text %s', self.dungeon.turn, user_input.key, user_input.text)
@@ -559,7 +568,6 @@ class Game:
                     return TurnEvent(0, move_x=1, move_y=1, description=constants.MOVE_3)
                 # Rest for 1 turn
                 elif controls.wait(user_input):
-                    self.dungeon.player_wait()
                     return TurnEvent(self.dungeon.player.fighter.speed, constants.WAIT)
                 # drop an item show the inventory; if an item is selected, drop it
                 elif controls.drop(user_input):
@@ -591,13 +599,13 @@ class Game:
             if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
                 self.dungeon.pick_up(obj.item)
                 turn_action.turns_used = self.dungeon.player.fighter.speed
+                return True
                 
     def do_inventory_use(self, turn_action):
         chosen_item = self.inventory_menu()
         if chosen_item:
             if chosen_item.use():
                 turn_action.turns_used = self.dungeon.player.fighter.speed
-        tdl.flush()
         
     def do_move(self, turn_action):
         turn_action.turns_used = self.dungeon.player_move_or_attack(turn_action.move_x, turn_action.move_y)

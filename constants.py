@@ -45,7 +45,7 @@ TORCH_RADIUS = 8 #was 10
 FOV_BASIC = 'BASIC'
 
 # launcher settings
-LIMIT_FPS = 20  #20 frames-per-second maximum
+LIMIT_FPS = 30  #20 frames-per-second maximum
 TITLE = "Grendel's Last Stand"
 AUTHOR = 'Astrimedes'
 
@@ -91,4 +91,4 @@ PICK_UP = 'picked up'
 DROP = 'drop'
 
 
-INPUT_REPEAT_DELAY = 1.0 / 60.0
+INPUT_REPEAT_DELAY = 1.0 / 50.0

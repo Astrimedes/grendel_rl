@@ -1,31 +1,43 @@
 #!/usr/bin/env python3
 
+# y k u
+#  \|/
+# h-.-l
+#  /|\
+# b j n
+
+# 7 8 9
+#  \|/
+# 4-5-6
+#  /|\
+# 1 2 3
+
 def up_left(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP7' or user_input.text == '7')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP7', '7', 'y'])
     
 def up(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP8' or user_input.text == '8')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP8', '8', 'k'])
     
 def up_right(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP9' or user_input.text == '9')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP9', '9', 'u'])
     
 def left(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP4' or user_input.text == '4')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP4', '4', 'h'])
     
 def wait(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP5' or user_input.text == '5' or user_input.text == '.')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP5', '5', '.'])
     
 def right(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP6' or user_input.text == '6')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP6', '6', 'l'])
     
 def down_left(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP1' or user_input.text == '1')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP1', '1', 'b'])
     
 def down(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP2' or user_input.text == '2')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP2', '2', 'j'])
     
 def down_right(user_input):
-    return user_input.type == 'KEYDOWN' and (user_input.key == 'KP3' or user_input.text == '3')
+    return user_input.type == 'KEYDOWN' and any(i in [user_input.key, user_input.text] for i in ['KP3', '3', 'n'])
     
 def pick_up(user_input):
     return user_input.type == 'KEYDOWN' and user_input.text == 'g'
