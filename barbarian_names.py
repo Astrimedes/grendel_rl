@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from random import choice
 
-_prefixes = ('Uth','Threk','Kur','Ro','Ar','Co','Wulf','Kor','Hroth')
-_suffixes = ('gar','nan','gorn','ruk','','wor','tor')
+_prefixes = ('Uth','Threk','Kur','Ro','Ar','Co','Wulf','Kor','Hroth','Be','Tho','Yor','Gor')
+_suffixes = ('gar','nan','gorn','ruk','','wor','tor','orn','kuk','ak','torn')
 
 def barb_name():
     return choice(_prefixes) + choice(_suffixes)

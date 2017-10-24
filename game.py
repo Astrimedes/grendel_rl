@@ -19,9 +19,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class TurnEvent:
     # information about what transpired while resolving player input (did a turn pass?)
-    def __init__(self, turns_used, description = ''):
+    def __init__(self, turns_used, description = '', move_x = 0, move_y = 0, attacked=False):
         self.turns_used = turns_used
         self.description = description
+        self.move_x = move_x
+        self.move_y = move_y
+        self.attacked = attacked
 
 class Game:
     def __init__(self):
@@ -32,6 +35,10 @@ class Game:
         self.messages = []
         self.message_panel = None
         self.mouse_coord = None
+        
+        self.total_time = time.process_time()
+        self.last_command = None
+        self.last_command_time = -999
     
     ### SAVE AND LOAD GAME ###
     def save_game(self):
@@ -130,39 +137,75 @@ class Game:
         self.mouse_coord = (0, 0)
         
         while not tdl.event.is_window_closed():
+            action = None
      
             #draw all objects in the list
             if self.dungeon:
                 self.render_all()
-                self.clear_map_render()
                 tdl.flush()
+                self.clear_map_render()
                 
+            #track time
+            newtime = time.process_time()
+            self.total_time = newtime
+            
             #handle keys and exit game if needed
-            action = self.handle_keys()
+            while not action:
+                action = self.handle_keys()
             
             if not action:
                 desc = 'None'
             else:
                 desc = action.description
-                #report item names on tile if applicable
-                if action.description == constants.MOVE or action.description == constants.PICK_UP:
-                    names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
-                    if names:
-                        self.message('You see items here: ' + names + '. Press g to pick up.')
+                delta = 100
                 
-            logging.debug('play_game, state = %s, action = %s', self.state, desc)
-            
-            logging.debug('%s - action taken', desc)
-     
-            if self.state == constants.STATE_PLAYING:
-                #let monsters take their turn: during play state, when a turn has passed
-                if action.turns_used > 0:
-                    self.dungeon.ai_act(action.turns_used)
+                if self.state == constants.STATE_PLAYING:
+                    #avoid numpad's numlock-on multi key press sending 2 keys to repeat the action
+                    moved = desc in [constants.MOVE_1, constants.MOVE_2, constants.MOVE_3, constants.MOVE_4, 
+                        constants.MOVE_6, constants.MOVE_7, constants.MOVE_8, constants.MOVE_9]
+                    if moved or desc in [constants.PICK_UP, constants.DROP, constants.INVENTORY]:
+                        if desc == self.last_command:
+                            delta = newtime - self.last_command_time
+                        
+                        self.last_command_time = newtime
+                        self.last_command = desc
+                        if delta < constants.INPUT_REPEAT_DELAY:
+                            logging.info('COMMAND %s: delta (%s) < allowed delay (%s)', desc, delta, constants.INPUT_REPEAT_DELAY)
+                            continue
+                        else:
+                            logging.info('desc = %s, %s = last_command, %s delta, %s total time', desc, self.last_command, delta, self.total_time)
+                    
+                        picked_up = False
+                        # evaluate delayed actions (selection screens mostly)
+                        if moved:
+                            self.do_move(action)
+                        elif desc == constants.DROP:
+                            self.do_drop(action)
+                        elif desc == constants.PICK_UP:
+                            picked_up = True
+                            self.do_pickup(action)
+                        elif desc == constants.INVENTORY:
+                            self.do_inventory_use(action)
+                        #report item names on tile if applicable
+                        if moved or picked_up:
+                            names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
+                            if names:
+                                self.message('You see items here: ' + names + '. Press g to pick up.')
+                                
+                        #let monsters take their turn: during play state, when a turn has passed
+                        if action.turns_used > 0:
+                            self.dungeon.ai_act(action.turns_used)
                 
-            #exit if player pressed exit
-            elif self.state == constants.STATE_EXIT:
-                self.save_game()
-                break
+                    logging.debug('play_game, state = %s, action = %s', self.state, desc)
+                    
+                    logging.debug('%s - action taken', desc)
+                    
+                #exit if player pressed exit
+                elif self.state == constants.STATE_EXIT:
+                    self.save_game()
+                    break
+                    
+               
      
     ### MAIN MENU ###
     def main_menu(self):
@@ -227,7 +270,6 @@ class Game:
         self.map_console.clear()
         self.root_console.clear()
         self.message_panel.clear()
-        tdl.flush()
         self.fov_recompute = True
 
     ### LAUNCH GAME ###
@@ -277,6 +319,7 @@ class Game:
         height = len(options) + header_height
      
         #create an off-screen console that represents the menu's window
+ 
         window = tdl.Console(width, height)
      
         #print the header, with wrapped text
@@ -313,13 +356,21 @@ class Game:
         #convert the ASCII code to an index; if it corresponds to an option, return it
         index = ord(key_char) - ord('a')
         logging.debug('Pressed key %s, index %s', key.char, index)
+        
+        # clear menu window in dungeon
+        if self.dungeon:
+            self.map_console.clear()
+            self.render_all()
+            tdl.flush()
+        
         if index >= 0 and index < len(options):
             return index
         return None
 
         
     ### INVENTORY ###
-    def inventory_menu(self, header):
+    def inventory_menu(self, header='Press the key next to an item to ' +
+                                             'use it, or any other to cancel.\n'):
         #show a menu with each item of the inventory as an option
         weapon = self.dungeon.player.weapon()
         if len(self.dungeon.inventory) == 0 and not weapon:
@@ -334,7 +385,7 @@ class Game:
      
         index = self.menu(header, options, constants.INVENTORY_WIDTH)
         logging.info('Inventory: chose index %s', index)
-     
+        
         #if an item was chosen, return it
         if index is None or len(self.dungeon.inventory) == 0:
             logging.info('Inv index: %s, inventory len: %s', index, len(self.dungeon.inventory))
@@ -372,8 +423,6 @@ class Game:
             x = self.mouse_coord[0]
             y = self.mouse_coord[1]
             
-            
-            
             #update targeting area
             if (x,y) != last_coord or clicked:
             
@@ -384,7 +433,7 @@ class Game:
                 last_coord = self.mouse_coord
                 if (x,y) in self.dungeon.visible_tiles:
                     # render new target area
-                    if not(self.dungeon.map[x][y].blocked) and (not(max_range) or (self.dungeon.distance(self.dungeon.player, x, y) <= max_range)):
+                    if not(self.dungeon.map[x][y].blocked) and (not(max_range) or (self.dungeon.distance(self.dungeon.player.x, self.dungeon.player.y, x, y) <= max_range)):
                         self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_target)
                         logging.debug('drew to %s',last_coord)
                         if target_size > 0:
@@ -402,8 +451,8 @@ class Game:
             tdl.flush()
             
             if (clicked and self.mouse_coord in self.dungeon.visible_tiles and
-                (max_range is None or self.dungeon.distance(player, x, y) <= max_range)):
-                self.dungeon.fov_recompute = True
+                (max_range is None or self.dungeon.distance(player.x, player.y, x, y) <= max_range)):
+                self.fov_recompute = True
                 return self.mouse_coord
  
     def get_names_under_mouse(self):
@@ -449,91 +498,109 @@ class Game:
     
     ### PLAYER INPUT ###
     def handle_keys(self):
-    
-        keypress = False
+        
         for event in tdl.event.get():
+            
+            keydown = False
+        
             if event.type == 'KEYDOWN':
                 user_input = event
-                keypress = True
-                logging.debug('Key press detected!')
-            if event.type == 'MOUSEMOTION':
+                keydown = True
+                logging.info('Key Down detected!')
+            elif event.type == 'MOUSEMOTION':
                 self.mouse_coord = event.cell
                 logging.debug("Mouse coord: %s", self.mouse_coord)
-     
-        if not keypress:
-            return TurnEvent(0, 'No key press')
-     
-        if user_input.key == 'ENTER' and user_input.alt:
-            #Alt+Enter: toggle fullscreen
-            tdl.set_fullscreen(not tdl.get_fullscreen())
-            return TurnEvent(0, 'Full screen toggle')
-     
-        elif user_input.key == 'ESCAPE':
-            self.exit_game()
-            return TurnEvent(0, 'exiting')  #exit game
-     
-        if self.state == constants.STATE_PLAYING and not(self.dungeon.player.fighter.died):
-        
-            logging.debug('Pressed key %s , text %s', user_input.key, user_input.text)
+            if not (keydown):
+                return
             
-            #movement keys
-            #up left
-            if controls.up_left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, -1), constants.MOVE)
-            #up
-            elif controls.up(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(0, -1), constants.MOVE)
-            #up right
-            elif controls.up_right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, -1), constants.MOVE)
-            #left
-            elif controls.left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, 0), constants.MOVE)
-            #right
-            elif controls.right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, 0), constants.MOVE)
-            #down left
-            elif controls.down_left(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(-1, 1), constants.MOVE)
-            #down
-            elif controls.down(user_input) or user_input.key == 'KP2':
-                return TurnEvent(self.dungeon.player_move_or_attack(0, 1), constants.MOVE)
-            #down right
-            elif controls.down_right(user_input):
-                return TurnEvent(self.dungeon.player_move_or_attack(1, 1), constants.MOVE)
-            # Rest for 1 turn
-            elif controls.wait(user_input):
-                self.dungeon.player_wait()
-                return TurnEvent(self.dungeon.player.fighter.speed, constants.WAIT)
-            # pick up an item
-            elif controls.pick_up(user_input):
-                #pick up an item
-                for obj in self.dungeon.objects:  #look for an item in the player's tile
-                    if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
-                        self.dungeon.pick_up(obj.item)
-                        return TurnEvent(self.dungeon.player.fighter.speed, constants.PICK_UP)
-            # inventory
-            elif controls.inventory(user_input):
-                #show the inventory; if an item is selected, use it
-                chosen_item = self.inventory_menu('Press the key next to an item to ' +
-                                             'use it, or any other to cancel.\n')
-                if chosen_item is not None:
-                    turns = 0
-                    if chosen_item.use():
-                        turns = self.dungeon.player.fighter.speed
-                    return TurnEvent(turns, constants.USE)
-            # drop an item show the inventory; if an item is selected, drop it
-            elif controls.drop(user_input):
-                chosen_item = self.inventory_menu('Press the key next to an item to' + 
-                'drop it, or any other to cancel.\n')
-                if chosen_item is not None:
-                    chosen_item.drop()
-                    return TurnEvent(self.dungeon.player.fighter.speed, constants.DROP)
-            else:
-                return TurnEvent(0, 'invalid key: didnt-take-turn')
+            if user_input.key == 'ENTER' and user_input.alt:
+                #Alt+Enter: toggle fullscreen
+                tdl.set_fullscreen(not tdl.get_fullscreen())
+                return TurnEvent(0, 'Full screen toggle')
+            elif user_input.key == 'ESCAPE':
+                self.exit_game()
+                self.clear_all()
+                tdl.flush()
+                return TurnEvent(0, 'exiting')  #exit game
+                
+            if self.state == constants.STATE_PLAYING and not(self.dungeon.player.fighter.died):
+            
+                # ignore menu input carrying through
+                if self.last_command == constants.INVENTORY or self.last_command == constants.DROP:
+                    self.last_command = None
+                    return
+            
+                logging.info('Turn %s: Pressed key %s , text %s', self.dungeon.turn, user_input.key, user_input.text)
+                
+                #movement keys
+                #up left
+                if controls.up_left(user_input):
+                    return TurnEvent(0, move_x=-1, move_y=-1, description=constants.MOVE_7)
+                #up
+                elif controls.up(user_input):
+                    return TurnEvent(0, move_x=-0, move_y=-1, description=constants.MOVE_8)
+                #up right
+                elif controls.up_right(user_input):
+                    return TurnEvent(0, move_x=1, move_y=-1, description=constants.MOVE_9)
+                #left
+                elif controls.left(user_input):
+                    return TurnEvent(0, move_x=-1, move_y=0, description=constants.MOVE_4)
+                #right
+                elif controls.right(user_input):
+                    return TurnEvent(0, move_x=1, move_y=0, description=constants.MOVE_6)
+                #down left
+                elif controls.down_left(user_input):
+                    return TurnEvent(0, move_x=-1, move_y=1, description=constants.MOVE_1)
+                #down
+                elif controls.down(user_input):
+                    return TurnEvent(0, move_x=0, move_y=1, description=constants.MOVE_2)
+                #down right
+                elif controls.down_right(user_input):
+                    return TurnEvent(0, move_x=1, move_y=1, description=constants.MOVE_3)
+                # Rest for 1 turn
+                elif controls.wait(user_input):
+                    self.dungeon.player_wait()
+                    return TurnEvent(self.dungeon.player.fighter.speed, constants.WAIT)
+                # drop an item show the inventory; if an item is selected, drop it
+                elif controls.drop(user_input):
+                    return TurnEvent(0, constants.DROP)
+                # pick up an item
+                elif controls.pick_up(user_input):
+                    return TurnEvent(0, constants.PICK_UP)
+                # inventory
+                elif controls.inventory(user_input):
+                    #show the inventory; if an item is selected, use it
+                    return TurnEvent(0, constants.INVENTORY)
+                else:
+                    return TurnEvent(0, 'invalid key: didnt-take-turn')
                 
         return TurnEvent(0, 'game not in Playing state or action cancelled')
-    
+        
+        
+        
+    def do_drop(self, turn_action):
+        chosen_item = self.inventory_menu('Press the key next to an item to' + 
+        'drop it, or any other to cancel.\n')
+        if chosen_item is not None:
+            chosen_item.drop()
+            turn_action.turns_used = self.dungeon.player.fighter.speed
+            
+    def do_pickup(self, turn_action):
+        #pick up an item
+        for obj in self.dungeon.objects:  #look for an item in the player's tile
+            if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
+                self.dungeon.pick_up(obj.item)
+                turn_action.turns_used = self.dungeon.player.fighter.speed
+                
+    def do_inventory_use(self, turn_action):
+        chosen_item = self.inventory_menu()
+        if chosen_item:
+            if chosen_item.use():
+                turn_action.turns_used = self.dungeon.player.fighter.speed
+        tdl.flush()
+        
+    def do_move(self, turn_action):
+        turn_action.turns_used = self.dungeon.player_move_or_attack(turn_action.move_x, turn_action.move_y)
     
     ### RENDERING ###
     def render_bar(self, x, y, total_width, name, value, maximum, bar_color, back_color):
@@ -555,8 +622,11 @@ class Game:
     def render_all(self):
         logging.debug('render_all')
         
-        if self.dungeon.fov_recompute:
-            self.dungeon.fov_recompute = False
+        if  not self.dungeon:
+            return
+        
+        if self.fov_recompute:
+            self.fov_recompute = False
             self.dungeon.visible_tiles = tdl.map.quickFOV(self.dungeon.player.x, self.dungeon.player.y,
                                              self.dungeon.is_visible_tile,
                                              fov=constants.FOV_ALGO,

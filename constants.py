@@ -22,7 +22,7 @@ INVENTORY_WIDTH = 50
 #parameters for dungeon generator
 ROOM_MAX_SIZE = 8
 ROOM_MIN_SIZE = 4
-MAX_ROOMS = 20
+MAX_ROOMS = 24
 MAX_ROOM_MONSTERS = 3
 MAX_ROOM_ITEMS = 2
 
@@ -74,8 +74,21 @@ THRESH_HEALTH = (1, 0.66, 0.33)
 THRESH_COLORS = (colors.darkest_green, colors.dark_yellow, colors.dark_red)
 
 MOVE = 'moved'
+MOVE_7 = 'moved_left-up'
+MOVE_8 = 'moved_up'
+MOVE_9 = 'moved right_up'
+MOVE_4 = 'moved_left'
+MOVE_6 = 'moved_right'
+MOVE_1 = 'moved_left-down'
+MOVE_2 = 'moved_down'
+MOVE_3 = 'moved_right-down'
+
+
 ATTACK = 'attacked'
-USE = 'used'
+INVENTORY = 'inventory'
 WAIT = 'waited'
 PICK_UP = 'picked up'
 DROP = 'drop'
+
+
+INPUT_REPEAT_DELAY = 1.0 / 60.0

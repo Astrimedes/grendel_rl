@@ -23,8 +23,6 @@ from barbarian_names import barb_name
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-CANCEL = 'cancelled'
-
 _dungeon = None
 
 class Rect:
@@ -71,6 +69,7 @@ class Item:
         _dungeon.inventory.remove(self)
         self.owner.x = _dungeon.player.x
         self.owner.y = _dungeon.player.y
+        _dungeon.send_to_back(self.owner)
         _dungeon.game.message('You dropped a ' + self.owner.name + '.', colors.yellow)
     
     def name(self):
@@ -82,7 +81,7 @@ class Item:
             _dungeon.game.message('The ' + self.owner.name + ' cannot be used.')
             return False
         else:
-            if self.use_function() != CANCEL:
+            if self.use_function():
                 _dungeon.inventory.remove(self)  #destroy after use, unless it was 
                                               #cancelled for some reason
                 return True
@@ -118,8 +117,8 @@ class GameObject:
 class HealingPotion(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal)
-        GameObject.__init__(self, _dungeon, x, y, '!', 'human flesh',
-            colors.violet, item=itm)
+        GameObject.__init__(self, _dungeon, x, y, '%', 'human flesh',
+            colors.red, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
             
@@ -283,22 +282,17 @@ class Barbarian(GameObject):
         barb_fighter.attack_verbs = ['chops', 'cuts', 'connects with']
         barb_fighter.weapon_names = ['handaxe', 'wildly swinging axe', 'axe']
                  
-        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Barbarian', colors.light_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Barbarian', colors.dark_orange, blocks=True, 
                  fighter=barb_fighter, ai=barb_ai, item=None)
                  
                  
     def death(self):
         #transform it into a nasty corpse! it doesn't block, can't be
         #attacked and doesn't move
-        self.dungeon.game.message(choice(['The barbarian dies!', 'The barbarian dies screaming!', 'The barbarian collapses and dies.']), colors.orange)
-        
-        self.char = '%'
-        self.color = colors.dark_red
-        self.blocks = False
-        self.fighter = None
-        self.ai = None
-        self.name = 'barbarian body'
-        self.dungeon.send_to_back(self)
+        self.dungeon.game.message(self.name + 
+            choice([' dies!', 
+            ' is destroyed!', 
+            " dies screaming!"]), colors.orange)
         
          # add a 'body' here for healing
         _dungeon.objects.remove(self)
@@ -315,7 +309,7 @@ class BarbarianTough(GameObject):
         zombi_fighter.attack_verbs = ['cleaves', 'chops', 'carves']
         zombi_fighter.weapon_names = ['battle axe', 'mighty axe', 'well-worn axe']
         
-        GameObject.__init__(self, dungeon, x, y, 'B', barb_name() + ' the Barbarian Tough', colors.orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'B', barb_name() + ' the Barbarian Tough', colors.dark_orange, blocks=True, 
                  fighter=zombi_fighter, ai=zombi_ai, item=None)
                  
     def death(self):
@@ -350,6 +344,8 @@ class Weapon(Item):
         self.attack_names = attack_names
         self.attack_verbs = attack_verbs
         
+        self.fighter = None
+        
         self.owner = GameObject(_dungeon, -999, -999, 'w', self.name(), colors.white, blocks=False, 
                  item=self)
         
@@ -368,10 +364,23 @@ class Weapon(Item):
         
     def equip(self, fighter):
         if not fighter.weapon is self:
+            self.fighter = fighter
             fighter.weapon = self
             _dungeon.game.message(fighter.owner.name + ' wields a ' + self.name() + '!', colors.white)
             return True
         return False
+        
+    def unequip(self):
+        if self.fighter and self.fighter.weapon is self:
+            _dungeon.game.message(self.fighter.owner.name + ' stops using a ' + self.name() + '.', colors.white)
+            self.fighter.weapon = None
+            self.fighter = None
+            return True
+        return False
+            
+    def drop(self):
+        self.unequip()
+        Item.drop(self)
         
     # override Item: equip from player's inventory and don't consume item
     def use(self):
@@ -396,7 +405,6 @@ class Dungeon:
         self.map = None
         self.inventory = []
         self.visible_tiles = []
-        self.fov_recompute = True
         self.level = 1
         
         # keeps track of turns passed (use monster/player speed to check when to act)
@@ -622,25 +630,6 @@ class Dungeon:
                 
     def place_objects_gen(self, room, num_monsters, num_items):        
         # room = (x, y, w, h)
-        
-        added = num_monsters == 0
-        for i in range(num_monsters):
-            while not added:
-                #choose random spot for this monster
-                x = randint(room[0] - room[2] + 1, room[0] + room[2] - 1)
-                y = randint(room[1] - room[3] + 1, room[1] + room[3] - 1)
-         
-                #only place it if the tile is not blocked
-                if not self.is_blocked(x, y):
-                    added = True
-                    if randint(0, 100) < 65:  #65% chance of getting a skeleton
-                        #create a Barbarian
-                        monster = Barbarian(self, x, y)
-                    else:
-                        #create a BarbarianTough
-                        monster = BarbarianTough(self, x, y)
-         
-                    self.objects.append(monster)
      
         #choose random number of items
         #num_items = randint(0, constants.MAX_ROOM_ITEMS)
@@ -689,18 +678,34 @@ class Dungeon:
          
                     self.objects.append(item)
                     self.send_to_back(item)  #items appear below other objects
+                    
+                    
+        added = num_monsters == 0
+        for i in range(num_monsters):
+            while not added:
+                #choose random spot for this monster
+                x = randint(room[0] - room[2] + 1, room[0] + room[2] - 1)
+                y = randint(room[1] - room[3] + 1, room[1] + room[3] - 1)
+         
+                #only place it if the tile is not blocked
+                if not self.is_blocked(x, y):
+                    added = True
+                    if randint(0, 100) < 65:  #65% chance of getting a skeleton
+                        #create a Barbarian
+                        monster = Barbarian(self, x, y)
+                    else:
+                        #create a BarbarianTough
+                        monster = BarbarianTough(self, x, y)
+         
+                    self.objects.append(monster)
 
                 
     ### MAP QUERIES ###
-    def distance(self, game_obj, x, y):
-        #return the distance to some coordinates
-        return math.sqrt((x - game_obj.x) ** 2 + (y - game_obj.y) ** 2)
-     
     def distance_to(self, game_obj, other_game_obj):
         #return the distance to another object
-        return self.distance(game_obj, other_game_obj.x, other_game_obj.y)
+        return self.distance(game_obj.x, game_obj.y, other_game_obj.x, other_game_obj.y)
         
-    def distance_pts(self, x1, y1, x2, y2):
+    def distance(self, x1, y1, x2, y2):
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
     def is_visible_tile(self, x, y):
@@ -830,7 +835,7 @@ class Dungeon:
         else:
             if self.move(self.player, dx, dy):
                 turns_used = self.player.fighter.speed
-                self.fov_recompute = True
+                self.game.fov_recompute = True
         return turns_used
 
     def player_wait(self):
@@ -883,17 +888,20 @@ class BasicMonster:
         # calc monster fov if near enough to player
         if distance < constants.DEFAULT_PATHSIZE:
             monster_view = tdl.map.quickFOV(monster.x, monster.y,
-                                         is_visible_tile,
-                                         self.fov,
-                                         radius=self.fov_radius,
-                                         lightWalls=constants.FOV_LIGHT_WALLS)
+                                         is_visible_tile)
+            logging.info('%s tries an FOV...', self.owner.name)
+                                         # self.fov,
+                                         # radius=self.fov_radius,
+                                         # lightWalls=constants.FOV_LIGHT_WALLS)
                                          
                                          #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
         
             if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
+                logging.info('Player is in view of %s', self.owner.name)
                 #move towards player if far away
                 if distance >= 2:
                     #monster.move_towards(player.x, player.y)
+                    logging.info('%s wants to move towards player. distance = %s', self.owner.name, distance)
                     self.dungeon.move_astar(monster, self.dungeon.player)
                     return monster.fighter.speed
 
@@ -934,10 +942,12 @@ def cast_heal():
     #heal the player
     if _dungeon.player.fighter.hp == _dungeon.player.fighter.max_hp:
         _dungeon.game.message("You should save this for when you're wounded.", colors.red)
-        return 'cancelled'
+        return False
  
     _dungeon.game.message('You feast on the flesh of your enemies. Your wounds heal.', colors.light_violet)
     _dungeon.player.fighter.heal(constants.HEAL_AMOUNT+_dungeon.level)
+    
+    return True
     
 def cast_lightning(caster_gameobj=None):
     logging.info('casting lightning...')
@@ -949,7 +959,7 @@ def cast_lightning(caster_gameobj=None):
     monster = _dungeon.closest_monster(caster_gameobj, constants.LIGHTNING_RANGE)
     if monster is None:  #no enemy found within maximum range
         _dungeon.game.message('No enemy is close enough to strike.', colors.red)
-        return 'cancelled'
+        return False
  
     #zap it!
     _dungeon.game.message('A lighting bolt arcs towards the ' + monster.name + ' with a loud thunder!', 
@@ -957,6 +967,8 @@ def cast_lightning(caster_gameobj=None):
  
     monster.fighter.take_damage('Magical lightning', choice(['strikes', 'zaps', 'fries']), 'electricity', colors.light_blue, constants.LIGHTNING_DAMAGE)
  
+    return True
+    
 # def cast_confuse():
     # #ask the player for a target to confuse
     # _dungeon.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
@@ -985,10 +997,12 @@ def cast_fireball():
     
     if x is None: 
         _dungeon.game.message('Cancelled')
-        return 'cancelled'
+        return False
     _dungeon.game.message('The fireball explodes, burning everything within ' + 
             str(constants.FIREBALL_RADIUS) + ' tiles!', colors.orange)
  
     for obj in _dungeon.objects:  #damage every fighter in range, including the player
-        if _dungeon.distance(obj, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
+        if _dungeon.distance(obj.x, obj.y, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
             obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flame', 'heat', 'blast']), colors.orange, constants.FIREBALL_DAMAGE)
+            
+    return True
