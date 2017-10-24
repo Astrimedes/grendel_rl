@@ -79,10 +79,11 @@ class Game:
     def load_game(self):
         #open the previously saved shelve and load the game data
         
-        # if self.dungeon:
-            # del self.dungeon
+        if self.dungeon:
+            del self.dungeon
         
         self.dungeon = dungeon.Dungeon(self)
+        self.fov_recompute = True
         
         logging.debug('Before Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
         try:
@@ -464,29 +465,30 @@ class Game:
                 self.fov_recompute = True
                 return self.mouse_coord
  
-    def get_names_under_mouse(self):
+    def get_obj_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
         (x, y) = self.mouse_coord
-        return self.get_names_at(x, y)
+        return self.get_obj_names_at(x, y)
         
-    def get_names_at(self, x, y):
+    def get_obj_names_at(self, x, y):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
             
         names = ', '.join(names)  #join the names, separated by commas
         return names.capitalize() 
         
+    def get_items_at(self, x, y):
+        return [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and obj.item != None]
+        
     def get_item_names_at(self, x, y):
         #create a list with the names of all Items at the mouse's coordinates and in FOV
+        items = self.get_items_at(x, y)
+        hasitems = len(items) > 0
         names = []
-        
-        hasitems = False
-        items = [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y)]
         for itm in items:
             if itm:
                 hasitems = True
                 names.append(itm.name().capitalize())
-        
         if hasitems:
             return ', '.join(names)
         else:
@@ -684,7 +686,7 @@ class Game:
             colors.light_red, colors.darker_red)
      
         #display names of objects under the mouse
-        self.message_panel.draw_str(1, 0, self.get_names_under_mouse(), bg=None, fg=colors.light_gray)
+        self.message_panel.draw_str(1, 0, self.get_obj_names_under_mouse(), bg=None, fg=colors.light_gray)
      
         #blit the contents of "self.message_panel" to the self.root_console console
         self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)

@@ -61,8 +61,8 @@ STATE_EXIT = 'exit'
 color_dark_ground = colors.darkest_azure
 color_dark_wall = colors.darkest_gray
 
-color_light_ground = colors.light_flame
-color_light_wall = colors.flame
+color_light_ground = colors.light_sepia
+color_light_wall = colors.sepia
 
 color_target = colors.light_orange
 

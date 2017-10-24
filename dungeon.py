@@ -439,8 +439,8 @@ class Dungeon:
         rooms = []
         num_rooms = 0
         
-        items_left = self.level + 5
-        monsters_left = self.level +6
+        items_left = 0
+        monsters_left = (self.level * 4) + 8
         
         # generate layout
         gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT, max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
@@ -476,71 +476,6 @@ class Dungeon:
                 
                 # add them!
                 self.place_objects_gen(new_room, monsters, items)
-                    
-            
-     
-        
-        # for r in range(constants.MAX_ROOMS):
-            # #random width and height
-            # w = randint(constants.ROOM_MIN_SIZE, constants.ROOM_MAX_SIZE)
-            # h = randint(constants.ROOM_MIN_SIZE, constants.ROOM_MAX_SIZE)
-            # #random position without going out of the boundaries of the map
-            # x = randint(0, constants.MAP_WIDTH-w-1)
-            # y = randint(0, constants.MAP_HEIGHT-h-1)
-     
-            # #"Rect" class makes rectangles easier to work with
-            # new_room = Rect(x, y, w, h)
-     
-            # #run through the other rooms and see if they intersect with this one
-            # failed = False
-            # for other_room in rooms:
-                # if new_room.intersect(other_room):
-                    # failed = True
-                    # break
-     
-            # if not failed:
-                # #this means there are no intersections, so this room is valid
-     
-                # #"paint" it to the map's tiles
-                # self.create_room(new_room)
-     
-                # #center coordinates of new room, will be useful later
-                # (new_x, new_y) = new_room.center()
-     
-                # if num_rooms == 0:
-                    # #this is the first room, where the player starts at
-                    # self.player.x = new_x
-                    # self.player.y = new_y
-     
-                # else:
-                    # #all rooms after the first:
-                    # #connect it to the previous room with a tunnel
-     
-                    # #center coordinates of previous room
-                    # (prev_x, prev_y) = rooms[num_rooms-1].center()
-     
-                    # #draw a coin (random number that is either 0 or 1)
-                    # if randint(0, 1):
-                        # #first move horizontally, then vertically
-                        # self.create_h_tunnel(prev_x, new_x, prev_y)
-                        # self.create_v_tunnel(prev_y, new_y, new_x)
-                    # else:
-                        # #first move vertically, then horizontally
-                        # self.create_v_tunnel(prev_y, new_y, prev_x)
-                        # self.create_h_tunnel(prev_x, new_x, new_y)
-     
-                # #add some contents to this room, such as monsters
-                # items = randint(0, min(items_left, 2))
-                # items_left -= items
-                # monsters = randint(0, min(monsters_left, 2))
-                # monsters_left -= monsters
-                
-                # # add them!
-                # self.place_objects(new_room, monsters, items)
-     
-                # #finally, append the new room to the list
-                # rooms.append(new_room)
-                # num_rooms += 1
 
     def create_h_tunnel(self, x1, x2, y):
         for x in range(min(x1, x2), max(x1, x2) + 1):
@@ -903,6 +838,12 @@ class BasicMonster:
                     #monster.move_towards(player.x, player.y)
                     logging.info('%s wants to move towards player. distance = %s', self.owner.name, distance)
                     self.dungeon.move_astar(monster, self.dungeon.player)
+                    #push any items on this square underneath monster
+                    items = self.dungeon.game.get_items_at(self.owner.x, self.owner.y)
+                    if items:
+                        for itm in items:
+                            self.dungeon.send_to_back(itm.owner)
+                    
                     return monster.fighter.speed
 
                 #close enough, attack! (if the player is still alive.)
