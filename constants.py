@@ -3,7 +3,7 @@ import colors
 
 #actual size of the window
 SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 50
+SCREEN_HEIGHT = 53
 TILE_SIZE = 16
  
 #size of the map
@@ -12,7 +12,7 @@ MAP_HEIGHT = 43
  
 #sizes and coordinates relevant for the GUI
 BAR_WIDTH = 20
-PANEL_HEIGHT = 7
+PANEL_HEIGHT = 10
 PANEL_Y = SCREEN_HEIGHT - PANEL_HEIGHT
 MSG_X = BAR_WIDTH + 2
 MSG_WIDTH = SCREEN_WIDTH - BAR_WIDTH - 2
@@ -39,7 +39,7 @@ FIREBALL_DAMAGE = 12
 # game / map settings
 FOV_ALGO = 'SHADOW' # was 'BASIC'
 FOV_ALGO_BAD = 'BASIC'
-FOV_RADIUS_BAD = 5
+FOV_RADIUS_BAD = 7
 FOV_LIGHT_WALLS = True
 TORCH_RADIUS = 8 #was 10
 FOV_BASIC = 'BASIC'

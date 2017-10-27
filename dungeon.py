@@ -11,6 +11,7 @@ import game
 from random import randint
 from random import choice
 from random import random
+from random import uniform as randfloat
 
 import dungeon_generator
 
@@ -302,7 +303,7 @@ class BarbarianTough(GameObject):
     #BarbarianTough monster GameObject
     def __init__(self, dungeon, x, y):
         zombi_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
-            vision_range=constants.FOV_RADIUS_BAD)
+            vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
         
         zombi_fighter = Fighter(hp=10+dungeon.level, defense=2+dungeon.level, power=5+dungeon.level,
             speed=1.5, atk_speed = -0.5, death_function=self.death)
@@ -334,7 +335,7 @@ class BarbarianTough(GameObject):
         
         
 class Weapon(Item):
-    def __init__(self, min_dmg=1, max_dmg=6, speed=0, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits']):
+    def __init__(self, min_dmg=1, max_dmg=6, speed=0, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits'], map_char = 'w', map_color = colors.white):
         
         Item.__init__(self)
         
@@ -344,9 +345,11 @@ class Weapon(Item):
         self.attack_names = attack_names
         self.attack_verbs = attack_verbs
         
+        self.type = 'weapon'
+        
         self.fighter = None
         
-        self.owner = GameObject(_dungeon, -999, -999, 'w', self.name(), colors.white, blocks=False, 
+        self.owner = GameObject(_dungeon, -999, -999, map_char, self.name(), map_color, blocks=False, 
                  item=self)
         
     def roll_dmg(self, owner_ftr, target_ftr):
@@ -367,7 +370,6 @@ class Weapon(Item):
             self.fighter = fighter
             fighter.weapon = self
             _dungeon.game.message(fighter.owner.name + ' wields a ' + self.name() + '!', colors.white)
-            return True
         return False
         
     def unequip(self):
@@ -443,9 +445,10 @@ class Dungeon:
         monsters_left = (self.level * 4) + 8
         
         # generate layout
-        gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT, max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
-                 max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=1,
-                 random_spurs=1)
+        gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
+                max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
+                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=0,
+                random_spurs=0)
         gen.gen_level()
         
         # populate tiles
@@ -690,7 +693,14 @@ class Dungeon:
             return True
         return False
  
+    # try to move towards the target
     def move_towards(self,  game_obj, target_x, target_y):
+        direction = self.get_direction(game_obj, target_x, target_y)
+        self.move(game_obj, direction[0], direction[1])
+        
+    
+    # returns an (x,y) tuple with one of the set of clockwise directional coordinates
+    def get_direction(self, game_obj, target_x, target_y):
         #vector from this object to the target, and distance
         dx = target_x - game_obj.x
         dy = target_y - game_obj.y
@@ -700,10 +710,10 @@ class Dungeon:
         #convert to integer so the movement is restricted to the map grid
         dx = int(round(dx / distance))
         dy = int(round(dy / distance))
-        self.move(game_obj, dx, dy)
+        return (dx,dy)
         
         
-    def move_astar(self, game_obj, target):
+    def move_astar(self, game_obj, x, y):
         #Create a FOV map that has the dimensions of the map
         fov = tcod.map_new(constants.MAP_WIDTH, constants.MAP_HEIGHT)
  
@@ -711,12 +721,13 @@ class Dungeon:
         for y1 in range(constants.MAP_HEIGHT):
             for x1 in range(constants.MAP_WIDTH):
                 tcod.map_set_properties(fov, x1, y1, not self.map[x1][y1].block_sight, not self.map[x1][y1].blocked)
+                
  
         #Scan all the objects to see if there are objects that must be navigated around
         #Check also that the object isn't game_obj or the target (so that the start and the end points are free)
         #The AI class handles the situation if self is next to the target so it will not use this A* function anyway   
         for obj in self.objects:
-            if obj.blocks and obj != game_obj and obj != target:
+            if obj.blocks and obj != game_obj and (obj.x != x or obj.y != y):
                 #Set the tile as a wall so it must be navigated around
                 tcod.map_set_properties(fov, obj.x, obj.y, True, False)
  
@@ -724,7 +735,11 @@ class Dungeon:
         my_path = tcod.path_new_using_map(fov, 1.0)
         
         #Compute the path between self's coordinates and the target's coordinates
-        tcod.path_compute(my_path, game_obj.x, game_obj.y, target.x, target.y)
+        tcod.path_compute(my_path, game_obj.x, game_obj.y, x, y)
+        
+        logging.info('%s moves a-star: start from %s,%s', game_obj.name, game_obj.x, game_obj.y)
+        
+        moved = False
  
         #Check if the path exists, and in this case, also the path is shorter than 25 tiles
         #The path size matters if you want the monster to use alternative longer paths (for example through other rooms) if for example the player is in a corridor
@@ -732,14 +747,18 @@ class Dungeon:
         if not tcod.path_is_empty(my_path) and tcod.path_size(my_path) < constants.DEFAULT_PATHSIZE:
             #Find the next coordinates in the computed full path
             x, y = tcod.path_walk(my_path, True)
-            if x or y:
+            if not (x is None or y is None) and not self.is_blocked(x, y):
                 #Set game_obj's coordinates to the next path tile
                 game_obj.x = x
                 game_obj.y = y
-        else:
-            #Keep the old move function as a backup so that if there are no paths (for example another monster blocks a corridor)
-            #it will still try to move towards the player (closer to the corridor opening)
-            self.move_towards(game_obj, target.x, target.y)  
+                logging.info('A-star move to %s,%s', x, y)
+                moved = True
+       
+        #Keep the old move function as a backup so that if there are no paths (for example another monster blocks a corridor)
+        #it will still try to move towards the player (closer to the corridor opening)
+        if not(moved):
+            self.move_towards(game_obj, x, y) 
+            logging.info('Simple move towards %s,%s', x, y)
  
         #Delete the path to free memory
         tcod.path_delete(my_path)
@@ -804,12 +823,27 @@ class Dungeon:
         
         
 class BasicMonster:
+
+    FLEE = 'flee'
+    FIGHT = 'fight'
+
     #AI for a basic monster.
-    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.TORCH_RADIUS):
+    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.TORCH_RADIUS, 
+        flee_health=0.75, flee_chance=0.9, curses=['The vile beast is here!','The thing from the moors! Die, monster!', 'Kill the beast!']):
+        
         self.fov = fov_algo
         self.fov_radius = vision_range
         self.dungeon = dungeon
         self.owner = None
+        self.flee_health = flee_health
+        self.flee_chance = flee_chance
+        
+        self.curses = curses
+        self.cursed = False
+        
+        #what this monster's been doing last turn
+        self.last_action = ''
+        self.last_see_player = False
 
     def take_turn(self):
         #a basic monster takes its turn.
@@ -820,45 +854,153 @@ class BasicMonster:
         
         logging.debug('%s: %s distance from player', self.owner.name, distance)
         
-        # calc monster fov if near enough to player
-        if distance < constants.DEFAULT_PATHSIZE:
-            monster_view = tdl.map.quickFOV(monster.x, monster.y,
-                                         is_visible_tile)
-            logging.info('%s tries an FOV...', self.owner.name)
-                                         # self.fov,
-                                         # radius=self.fov_radius,
-                                         # lightWalls=constants.FOV_LIGHT_WALLS)
-                                         
-                                         #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
+        # ignore if monster too far away
+        if distance > constants.DEFAULT_PATHSIZE:
+            self.last_action = ''
+            self.last_see_player = False
+            return monster.fighter.speed
         
-            if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
-                logging.info('Player is in view of %s', self.owner.name)
-                #move towards player if far away
-                if distance >= 2:
-                    #monster.move_towards(player.x, player.y)
-                    logging.info('%s wants to move towards player. distance = %s', self.owner.name, distance)
-                    self.dungeon.move_astar(monster, self.dungeon.player)
-                    #push any items on this square underneath monster
-                    items = self.dungeon.game.get_items_at(self.owner.x, self.owner.y)
-                    if items:
-                        for itm in items:
-                            self.dungeon.send_to_back(itm.owner)
-                    
-                    return monster.fighter.speed
-
-                #close enough, attack! (if the player is still alive.)
-                elif self.dungeon.player.fighter.hp > 0:
-                    monster.fighter.attack(self.dungeon.player)
-                    return monster.fighter.speed + monster.fighter.atk_speed
-                    
-        # ...otherwise, move randomly
-        moved = False
-        while not moved:
-            dx = randint(-1, 1)
-            dy = randint(-1, 1)
-            moved = self.dungeon.move(monster, dx, dy) or (random() < 0.1)
+        # monster fov if near enough to player
+        monster_view = tdl.map.quickFOV(monster.x, monster.y,
+                                     is_visible_tile)
+        logging.info('%s tries an FOV...', self.owner.name)
+                                     # self.fov,
+                                     # radius=self.fov_radius,
+                                     # lightWalls=constants.FOV_LIGHT_WALLS)
+                                     
+                                     #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
+        
+        # if monster sees player...
+        if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
+            logging.info('Player is in view of %s', self.owner.name)
+            
+            #notify player he's been seen...
+            if not self.last_see_player:
+                self.last_see_player = True
+                _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
+            
+            # Flee?
+            flee = monster.fighter.hp / monster.fighter.max_hp < self.flee_health and (self.last_action == BasicMonster.FLEE or randfloat(0.0,1.0) < self.flee_chance)
+            if flee:
+                return self.take_flee(distance)
+            else:
+            # Fight!
+                return self.take_fight(distance)
+                
+        # if close enough but don't see player, maybe move, or don't do anything
+        if randint(0,20) == 0:
+            dir = choice(clockwise)
+            _dungeon.move(monster, dir[0], dir[1])
+            
+        # indicate we haven't done anything
+        self.last_see_player = False
+        self.last_action = ''
         
         return monster.fighter.speed
+        
+    # Flee! (return turns used)
+    def take_flee(self, distance):
+    
+        if not(self.last_action == BasicMonster.FLEE):
+            self.last_action = BasicMonster.FLEE
+            _dungeon.game.message(self.owner.name + ' tries to flee!', colors.orange)
+                
+        # run opposite direction of player
+        direction = _dungeon.get_direction(self.owner, _dungeon.player.x, _dungeon.player.y)
+        xdir = -direction[0]
+        ydir = -direction[1]
+        # cast ray out away from player, path where you can run the furthest is chosen
+        # check individual paths for 'winner' of most clear squares
+        tries = 0
+        turn_clockwise = choice([True,False])
+        PATH_LENGTH = 4
+        best_path = None
+        most_clear = 0
+        best_idx = 0
+        valid = False
+        _xdir = xdir
+        _ydir = ydir
+       
+        path = None
+        while tries < 8:
+            tries += 1
+            clear = 0
+            # check a path that starts 1 square away from monster in flee direction
+            x = self.owner.x + _xdir
+            y = self.owner.y + _ydir
+            # path extends to 
+            path = tdl.map.bresenham(x, y, x + (_xdir*PATH_LENGTH), y + (_ydir*PATH_LENGTH))
+            i = 0
+            for i in range(0,len(path)):
+                pt = path[i]
+                pdist = _dungeon.distance_to(self.owner, _dungeon.player)
+                if pt and _dungeon.is_visible_tile(pt[0], pt[1]) and (i == 0 or pdist >= 2):
+                    if i < len(path)-1:
+                        pt2 = path[i+1]
+                        if _dungeon.is_visible_tile(pt2[0], pt2[1]):
+                            clear += 1 #weight tiles that have another clear tile in front of them
+                    # weight tiles by distance from player early on in path
+                    clear += 1 + (pdist * 2) - (i//2)
+                else:
+                    break
+                #set new best
+            if clear > most_clear:
+                if not best_path is None:
+                    tcod.path_delete(best_path)
+            
+                best_path = path
+                most_clear = clear
+                best_idx = i
+                xdir = _xdir
+                ydir = _ydir
+                valid = True
+                logging.info('%s Path: %s', self.owner.name, best_path)
+            else:
+                # free path from memory
+                if not path is None:
+                    tcod.path_delete(path)
+                    
+            # rotate the direction for next iteration
+            pt = (_xdir, _ydir)
+            (_xdir,_ydir) = rotate_pt(pt, turn_clockwise=turn_clockwise)
+        
+        if valid:
+            target = best_path[best_idx]
+            _dungeon.move_astar(self.owner, target[0], target[1])
+            tcod.path_delete(best_path)
+            return self.owner.fighter.speed
+            
+        return self.take_fight(distance)
+                
+    # Fight! (return turns used)
+    def take_fight(self, distance):
+        curse = False
+        if self.last_action != BasicMonster.FIGHT:
+            self.last_action = BasicMonster.FIGHT
+            curse = not(self.cursed)
+        #move towards player if far away
+        if curse:
+            _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+            self.cursed = True
+        
+        if distance >= 2:
+            logging.info('%s wants to move towards player. distance = %s', self.owner.name, distance)
+            _dungeon.move_astar(self.owner, self.dungeon.player.x, self.dungeon.player.y)
+            #hide any items on this square underneath self.owner
+            items = self.dungeon.game.get_items_at(self.owner.x, self.owner.y)
+            if items:
+                for itm in items:
+                    self.dungeon.send_to_back(itm.owner)
+            #return turns used
+            return self.owner.fighter.speed
+        else:
+            #close enough, attack!
+            self.owner.fighter.attack(self.dungeon.player)
+            return self.owner.fighter.speed + self.owner.fighter.atk_speed
+        
+        
+### functions with  no class ###
+
             
 ### callback functions ###
 def is_visible_tile(x, y):
@@ -947,3 +1089,24 @@ def cast_fireball():
             obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flame', 'heat', 'blast']), colors.orange, constants.FIREBALL_DAMAGE)
             
     return True
+    
+    
+clockwise = [(1,0), (1,1), (0,1), (-1,1), (-1,0), (-1,-1), (0,-1), (1,-1)]
+counter =   [(-1,0), (-1,1), (0,1), (1,1), (1,0), (1,-1), (0,-1), (-1,-1)]
+def rotate_pt(point, turn_clockwise=True):
+    logging.info('rotate %s. clockwise=%s', point, turn_clockwise)
+    if not(point in clockwise):
+        #pick random position
+        return choice(clockwise)
+    if turn_clockwise:
+        list = clockwise
+    else:
+        list = counter
+    idx = list.index(point)+1
+    if idx >= len(list):
+        idx = 0
+    elif idx < 0:
+        idx = len(list)-1
+    return list[idx]
+    
+    

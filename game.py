@@ -115,7 +115,11 @@ class Game:
     def new_game(self):
         
         if self.dungeon:
+            self.map_console.clear()
+            tdl.flush()
             del self.dungeon
+            
+        self.fov_recompute = True
         
         self.dungeon = dungeon.Dungeon(self)
      
@@ -131,7 +135,8 @@ class Game:
         self.messages = []
      
         #a warm welcoming message!
-        self.message('Welcome stranger! Prepare to perish in ' + constants.TITLE, colors.red)
+        self.message('You sneak into Heorot, home of Beowulf and his men...', colors.red)
+        self.message('Their music and merriment ends tonight - they all must die!', colors.red)
      
     ### MAIN LOOP ###
     def play_game(self):
@@ -146,14 +151,14 @@ class Game:
             if self.dungeon:
                 self.render_all()
                 tdl.flush()
-                self.clear_map_render()
+                self.clear_obj_render()
                 
             #track time
             newtime = time.process_time()
             self.total_time = newtime
             
             #handle keys and exit game if needed
-            while not action:
+            while not(action):
                 action = self.handle_keys()
             
             if not action:
@@ -198,10 +203,13 @@ class Game:
                             names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
                             if names:
                                 self.message('You see items here: ' + names + '. Press g to pick up.')
-                                
+                        
                         #let monsters take their turn: during play state, when a turn has passed
                         if action.turns_used > 0:
                             self.dungeon.ai_act(action.turns_used)
+                            
+                            
+                        
                 
                     logging.debug('play_game, state = %s, action = %s', self.state, desc)
                     
@@ -289,7 +297,7 @@ class Game:
         self.map_console = tdl.Console(constants.MAP_WIDTH, constants.MAP_HEIGHT)
         self.message_panel = tdl.Console(constants.SCREEN_WIDTH, constants.PANEL_HEIGHT)
         
-        tdl.setFPS(constants.LIMIT_FPS)
+        #tdl.setFPS(constants.LIMIT_FPS)
         
         ### start main menu ###
         self.main_menu()
@@ -478,7 +486,7 @@ class Game:
         return names.capitalize() 
         
     def get_items_at(self, x, y):
-        return [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and obj.item != None]
+        return [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and obj.item and not(obj.fighter)]
         
     def get_item_names_at(self, x, y):
         #create a list with the names of all Items at the mouse's coordinates and in FOV
@@ -669,6 +677,7 @@ class Game:
             if obj != self.dungeon.player:
                 self.draw_obj(obj)
         self.draw_obj(self.dungeon.player)
+        
         #blit the contents of "self.map_console" to the self.root_console console and present it
         self.root_console.blit(self.map_console, 0, 0, constants.MAP_WIDTH, constants.MAP_HEIGHT, 0, 0)
      
@@ -692,7 +701,7 @@ class Game:
         self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
         
         
-    def clear_map_render(self):
+    def clear_obj_render(self):
         #erase all objects at their old locations, before they move
         for obj in self.dungeon.objects:
             self.draw_clear(obj)
