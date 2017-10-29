@@ -502,9 +502,27 @@ class Game:
         else:
             return None
             
-    def get_bottom_obj_at(self, x, y):
-        objs = [obj for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and not(obj.fighter) and not(obj.item)]
-        return objs
+    def sort_obj_at(self, x, y):
+        junk = []
+        items = []
+        ftrs = []
+        
+        for obj in self.dungeon.objects:
+            if (obj.x, obj.y) == (x,y):
+                if obj.fighter:
+                    ftrs.append(obj)
+                elif obj.item:
+                    items.append(obj)
+                else:
+                    junk.append(obj)
+        # send to back in reverse order to sort
+        for f in ftrs:
+            self.dungeon.send_to_back(f)
+        for i in items:
+            self.dungeon.send_to_back(i)
+        for j in junk:
+            self.dungeon.send_to_back(j)
+            
         
     def target_monster(self, max_range=None):
         #returns a clicked monster inside FOV up to a range, or None if right-clicked
@@ -604,7 +622,7 @@ class Game:
         chosen_item = self.inventory_menu('Press the key next to an item to' + 
         'drop it, or any other to cancel.\n')
         if chosen_item is not None:
-            chosen_item.drop()
+            chosen_item.drop(self.dungeon.player)
             turn_action.turns_used = self.dungeon.player.fighter.speed
             
     def do_pickup(self, turn_action):
@@ -693,13 +711,59 @@ class Game:
         for (line, color) in self.messages:
             self.message_panel.draw_str(constants.MSG_X, y, line, bg=None, fg=color)
             y += 1
-     
-        #show the player's stats
-        self.render_bar(1, 1, constants.BAR_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
-            colors.light_red, colors.darker_red)
-     
+            
         #display names of objects under the mouse
         self.message_panel.draw_str(1, 0, self.get_obj_names_under_mouse(), bg=None, fg=colors.light_gray)
+     
+        #show player's hp bar
+        self.render_bar(1, 1, constants.BAR_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
+            colors.light_red, colors.darker_red)
+        
+        # show character stats
+        pfighter = self.dungeon.player.fighter
+        
+        # Strength
+        c = colors.white
+        diff = pfighter.power - constants.START_POWER
+        if diff != 0:
+            if diff > 0:
+                c = colors.green
+            else:
+                c = colors.red
+        self.message_panel.draw_str(1, 3, '  Strength: ' + str(pfighter.power), bg=None, fg=c)
+        
+        # Resilience
+        c = colors.white
+        diff = pfighter.defense - constants.START_DEFENSE
+        if diff != 0:
+            if diff > 0:
+                c = colors.green
+            else:
+                c = colors.red
+        self.message_panel.draw_str(1, 4, 'Resilience: ' + str(pfighter.defense), bg=None, fg=c)
+        
+        
+        # Speed (inverse!)
+        c = colors.white
+        diff = pfighter.speed - constants.START_SPEED
+        if diff != 0:
+            if diff > 0:
+                c = colors.red
+            else:
+                c = colors.green
+        self.message_panel.draw_str(1, 5, '     Speed: ' + str(pfighter.speed), bg=None, fg=c)
+        
+        
+        # Vision
+        c = colors.white
+        diff = self.dungeon.player.fov - constants.TORCH_RADIUS
+        if diff != 0:
+            if diff > 0:
+                c = colors.green
+            else:
+                c = colors.red
+        self.message_panel.draw_str(1, 6, '    Vision: ' + str(self.dungeon.player.fov), bg=None, fg=c)
+     
      
         #blit the contents of "self.message_panel" to the self.root_console console
         self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)

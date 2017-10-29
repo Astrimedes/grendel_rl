@@ -41,7 +41,7 @@ FOV_ALGO = 'SHADOW' # was 'BASIC'
 FOV_ALGO_BAD = 'BASIC'
 FOV_RADIUS_BAD = 7
 FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 5 #was 10
+TORCH_RADIUS = 4 #was 10
 FOV_BASIC = 'BASIC'
 
 # launcher settings
@@ -90,5 +90,19 @@ WAIT = 'waited'
 PICK_UP = 'picked up'
 DROP = 'drop'
 
-
 INPUT_REPEAT_DELAY = 1.0 / 50.0
+
+# starting stat levels
+START_POWER = 8
+START_SPEED = 1.25
+START_ATK_SPEED = -0.25
+START_DEFENSE = 2
+
+# worst stat levels
+MIN_POWER = 3
+MIN_DEFENSE = 0
+MAX_SPEED = 2.0
+MIN_VISION = 3
+
+# best stat levels
+MIN_SPEED = 0.1

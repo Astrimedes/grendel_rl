@@ -75,7 +75,7 @@ class Item:
         self.owner.x = obj_dropper.x
         self.owner.y = obj_dropper.y
         
-        _dungeon.send_to_back(self.owner)
+        _dungeon.game.sort_obj_at(self.owner.x, self.owner.y)
         _dungeon.game.message(obj_dropper.name + ' dropped a ' + self.owner.name + '.', colors.yellow)
     
     def name(self):
@@ -272,13 +272,14 @@ class Fighter:
                 self.set_health_color()
         if self.hp > self.max_hp:
             self.hp = self.max_hp
+
             
 class Player(GameObject):
     def __init__(self, dungeon, x, y):
     
         #create object representing the player
-        fighter_component = Fighter(hp=40, defense=2, power=8, 
-                                    speed=1.25, atk_speed=-0.25, death_function=self.death)
+        fighter_component = Fighter(hp=40, defense=constants.START_DEFENSE, power=constants.START_POWER, 
+                                    speed=constants.START_SPEED, atk_speed=constants.START_ATK_SPEED, death_function=self.death)
         fighter_component.attack_verbs = ['rake', 'scratch', 'tear', 'attack']
         fighter_component.weapon_names = ['claws', 'great claws', 'bloody claws']
         
@@ -330,18 +331,24 @@ class Barbarian(GameObject):
         # drop an item
         if randint(0,10) > 5:
             itmtype = randint(0,100)
+            itm = None
             if itmtype <= 5:
-                _dungeon.objects.append(HealingPotion(self.x, self.y))
+                itm = HealingPotion(self.x, self.y)
             else:
                 itmtype = randint(0,3)
                 if itmtype == 0:
-                    _dungeon.objects.append(StringyFlesh(self.x, self.y))
+                    itm = StringyFlesh(self.x, self.y)
                 elif itmtype == 1:
-                    _dungeon.objects.append(ToughFlesh(self.x, self.y))
+                    itm = ToughFlesh(self.x, self.y)
                 elif itmtype == 2:
-                    _dungeon.objects.append(Bones(self.x, self.y))
+                    itm = Bones(self.x, self.y)
                 else:
-                    _dungeon.objects.append(Eyes(self.x, self.y))
+                    itm = Eyes(self.x, self.y)
+            # add to dungeon
+            _dungeon.objects.append(itm)
+            # announce
+            _dungeon.game.message('You spot ' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
+                
         # transform to corpse
         self.name = 'corpse of ' + self.name
         self.char = '%'
@@ -350,10 +357,10 @@ class Barbarian(GameObject):
         self.fighter = None
         self.ai = None
         
-        # send other non-items and fighters to back of rendering order
-        back = _dungeon.game.get_bottom_obj_at(self.x, self.y)
-        for o in back:
-            _dungeon.send_to_back(o)
+        # sort this tile properly
+        _dungeon.game.sort_obj_at(self.x, self.y)
+        
+        
                  
 class BarbarianTough(Barbarian):
     #BarbarianTough monster GameObject
@@ -601,7 +608,7 @@ class Dungeon:
                     #                  colors.light_yellow, item=item_component)
      
                 self.objects.append(item)
-                self.send_to_back(item)  #items appear below other objects
+                self.game.sort_obj_at(x,y)
                 
                 
                 
@@ -654,7 +661,7 @@ class Dungeon:
                         #                  colors.light_yellow, item=item_component)
          
                     self.objects.append(item)
-                    self.send_to_back(item)  #items appear below other objects
+                    self.game.sort_obj_at(x,y)  #items appear below other objects
                     
                     
         added = num_monsters == 0
@@ -730,7 +737,7 @@ class Dungeon:
             game_obj.x += dx
             game_obj.y += dy
             # send items here to back
-            _dungeon.send_to_front(game_obj)
+            _dungeon.game.sort_obj_at(game_obj.x, game_obj.y)
             return True
         return False
  
@@ -798,7 +805,7 @@ class Dungeon:
                 #Set game_obj's coordinates to the next path tile
                 game_obj.x = x
                 game_obj.y = y
-                self.send_to_front(game_obj)
+                self.game.sort_obj_at(x,y)
                 logging.info('A-star move to %s,%s', x, y)
                 moved = True
        
@@ -864,14 +871,6 @@ class Dungeon:
         #they're in the same tile.
         self.objects.remove(game_obj)
         self.objects.insert(0, game_obj)
-        
-    def send_to_front(self, game_obj):
-        obj = [obj for obj in self.objects if obj.x == game_obj.x and obj.y == game_obj.y and obj != game_obj]
-        if obj:
-            for o in obj:
-                self.send_to_back(o)
-            
-    
     
     def pick_up(self, item):
         logging.info('pick up attempt')
@@ -1120,6 +1119,7 @@ VISION_PENALTY = -VISION_BONUS / 2
 DEFENSE_BONUS = 1
 DEFENSE_PENALTY = DEFENSE_BONUS / 2
 
+
 def bonus_power():
     _dungeon.player.fighter.power += POWER_BONUS
     _dungeon.game.message("Consuming your enemy's tough flesh makes you feel stronger!", colors.green)
@@ -1127,8 +1127,8 @@ def bonus_power():
     return True
             
 def penalty_power():
-    MIN_POWER = 3
-    _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + POWER_PENALTY, MIN_POWER)
+    
+    _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + POWER_PENALTY, constants.MIN_POWER)
     _dungeon.game.message("...but it makes you feel weaker, too.", colors.yellow)
     
 def bonus_defense():
@@ -1138,31 +1138,32 @@ def bonus_defense():
     return True    
     
 def penalty_defense():
-    MIN_DEFENSE = 0
-    _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + DEFENSE_PENALTY, MIN_DEFENSE)
+    
+    _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + DEFENSE_PENALTY, constants.MIN_DEFENSE)
     _dungeon.game.message("...but it makes you feel less resilient, too.", colors.yellow)
     
 def bonus_speed():
-    MIN_SPEED = 0.1
-    _dungeon.player.fighter.speed = max(MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
+    
+    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
     _dungeon.game.message("Consuming your enemy's stringy flesh makes you feel faster!", colors.green)
     try_penalty(penalty_vision, penalty_power, penalty_defense)
     return True
     
 def penalty_speed():
-    MAX_SPEED = 2.0
-    _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + SPEED_PENALTY, MAX_SPEED)
+    
+    _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + SPEED_PENALTY, constants.MAX_SPEED)
     _dungeon.game.message("...but it makes you feel slower, too.", colors.yellow)
     
 def bonus_vision():
+    _dungeon.game.fov_recompute = True
     _dungeon.player.fov += VISION_BONUS
     _dungeon.game.message("Consuming your enemy's eyes improves your vision!", colors.green)
     try_penalty(penalty_speed, penalty_power, penalty_defense)
     return True
     
 def penalty_vision():
-    MIN_VISION = 3
-    _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, MIN_VISION)
+    
+    _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, constants.MIN_VISION)
     _dungeon.game.message("...but it makes your vision worse, too.", colors.yellow)
     
 def try_penalty(penalty1, penalty2, penalty3):
