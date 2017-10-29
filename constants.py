@@ -41,7 +41,7 @@ FOV_ALGO = 'SHADOW' # was 'BASIC'
 FOV_ALGO_BAD = 'BASIC'
 FOV_RADIUS_BAD = 7
 FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 8 #was 10
+TORCH_RADIUS = 5 #was 10
 FOV_BASIC = 'BASIC'
 
 # launcher settings

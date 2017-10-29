@@ -483,7 +483,7 @@ class Game:
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
             
         names = ', '.join(names)  #join the names, separated by commas
-        return names.capitalize() 
+        return names
         
     def get_items_at(self, x, y):
         return [obj.item for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and obj.item and not(obj.fighter)]
@@ -501,6 +501,10 @@ class Game:
             return ', '.join(names)
         else:
             return None
+            
+    def get_bottom_obj_at(self, x, y):
+        objs = [obj for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and not(obj.fighter) and not(obj.item)]
+        return objs
         
     def target_monster(self, max_range=None):
         #returns a clicked monster inside FOV up to a range, or None if right-clicked
@@ -648,7 +652,7 @@ class Game:
             self.dungeon.visible_tiles = tdl.map.quickFOV(self.dungeon.player.x, self.dungeon.player.y,
                                              self.dungeon.is_visible_tile,
                                              fov=constants.FOV_ALGO,
-                                             radius=constants.TORCH_RADIUS,
+                                             radius=self.dungeon.player.fov,
                                              lightWalls=constants.FOV_LIGHT_WALLS)
      
         #go through all tiles, and set their background color according to the FOV
