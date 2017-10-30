@@ -76,7 +76,7 @@ class Item:
         self.owner.y = obj_dropper.y
         
         _dungeon.game.sort_obj_at(self.owner.x, self.owner.y)
-        _dungeon.game.message(obj_dropper.name + ' dropped a ' + self.owner.name + '.', colors.yellow)
+        _dungeon.game.message(obj_dropper.name + ' dropped ' + self.owner.name + '.', colors.yellow)
     
     def name(self):
         return self.owner.name
@@ -123,15 +123,15 @@ class GameObject:
 class HealingPotion(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal)
-        GameObject.__init__(self, _dungeon, x, y, '%', 'intact human heart',
-            colors.red, item=itm)
+        GameObject.__init__(self, _dungeon, x, y, 'o', 'intact human heart',
+            colors.flame, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
                  
 class ToughFlesh(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_power)
-        GameObject.__init__(self, _dungeon, x, y, '#', 'tough tasty flesh',
+        GameObject.__init__(self, _dungeon, x, y, 'x', 'tough tasty flesh',
             colors.dark_sepia, item=itm)
             
 class StringyFlesh(GameObject):
@@ -149,7 +149,7 @@ class Eyes(GameObject):
 class Bones(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_defense)
-        GameObject.__init__(self, _dungeon, x, y, '=', 'large bones',
+        GameObject.__init__(self, _dungeon, x, y, '-', 'large bones',
             colors.white, item=itm)
        
             
@@ -278,7 +278,7 @@ class Player(GameObject):
     def __init__(self, dungeon, x, y):
     
         #create object representing the player
-        fighter_component = Fighter(hp=40, defense=constants.START_DEFENSE, power=constants.START_POWER, 
+        fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
                                     speed=constants.START_SPEED, atk_speed=constants.START_ATK_SPEED, death_function=self.death)
         fighter_component.attack_verbs = ['rake', 'scratch', 'tear', 'attack']
         fighter_component.weapon_names = ['claws', 'great claws', 'bloody claws']
@@ -315,6 +315,9 @@ class Barbarian(GameObject):
             
         barb_fighter.attack_verbs = ['chops', 'cuts', 'connects with']
         barb_fighter.weapon_names = ['handaxe', 'wildly swinging axe', 'axe']
+        
+        # objects that drop upon death
+        self.drop_objects = []
                  
         GameObject.__init__(self, dungeon, x, y, 'd', barb_name() + ' the Dane', colors.dark_orange, blocks=True, 
                  fighter=barb_fighter, ai=barb_ai, item=None)
@@ -326,24 +329,12 @@ class Barbarian(GameObject):
         self.dungeon.game.message(self.name + 
             choice([' dies!', 
             ' is destroyed!', 
-            " dies screaming!"]), colors.orange)
-        
-        # drop an item
-        if randint(0,10) > 5:
-            itmtype = randint(0,100)
-            itm = None
-            if itmtype <= 5:
-                itm = HealingPotion(self.x, self.y)
-            else:
-                itmtype = randint(0,3)
-                if itmtype == 0:
-                    itm = StringyFlesh(self.x, self.y)
-                elif itmtype == 1:
-                    itm = ToughFlesh(self.x, self.y)
-                elif itmtype == 2:
-                    itm = Bones(self.x, self.y)
-                else:
-                    itm = Eyes(self.x, self.y)
+            " dies screaming!"]), colors.orange)                
+                
+        for itm in self.drop_objects:
+            # give it this position
+            itm.x = self.x
+            itm.y = self.y
             # add to dungeon
             _dungeon.objects.append(itm)
             # announce
@@ -372,6 +363,9 @@ class BarbarianTough(Barbarian):
             speed=1.5, atk_speed = -0.5, death_function=self.death)
         zombi_fighter.attack_verbs = ['cleaves', 'chops', 'carves']
         zombi_fighter.weapon_names = ['battle axe', 'mighty axe', 'well-worn axe']
+        
+        # objects that drop upon death
+        self.drop_objects = []
         
         GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Dane Chieftan', colors.dark_orange, blocks=True, 
                  fighter=zombi_fighter, ai=zombi_ai, item=None)
@@ -525,144 +519,16 @@ class Dungeon:
                 
                 # add them!
                 self.place_objects_gen(new_room, monsters, items)
+                
 
-    def create_h_tunnel(self, x1, x2, y):
-        for x in range(min(x1, x2), max(x1, x2) + 1):
-            self.map[x][y].blocked = False
-            self.map[x][y].block_sight = False
-     
-    def create_v_tunnel(self, y1, y2, x):
-        #vertical tunnel
-        for y in range(min(y1, y2), max(y1, y2) + 1):
-            self.map[x][y].blocked = False
-            self.map[x][y].block_sight = False
-            
-    def create_room(self, room):
-        #go through the tiles in the rectangle and make them passable
-        for x in range(room.x1 + 1, room.x2):
-            for y in range(room.y1 + 1, room.y2):
-                self.map[x][y].blocked = False
-                self.map[x][y].block_sight = False
-                
-    def place_objects(self, room, num_monsters, num_items):
-        #choose random number of monsters
-        #num_monsters = randint(0, constants.MAX_ROOM_MONSTERS)
-     
-        for i in range(num_monsters):
-            #choose random spot for this monster
-            x = randint(room.x1+1, room.x2-1)
-            y = randint(room.y1+1, room.y2-1)
-     
-     
-            #only place it if the tile is not blocked
-            if not self.is_blocked(x, y):
-                if randint(0, 100) < 65:  #65% chance of getting a skeleton
-                    #create a Barbarian
-                    monster = Barbarian(self, x, y)
-                else:
-                    #create a BarbarianTough
-                    monster = BarbarianTough(self, x, y)
-     
-                self.objects.append(monster)
-     
-        #choose random number of items
-        #num_items = randint(0, constants.MAX_ROOM_ITEMS)
-     
-        for i in range(num_items):
-            #choose random spot for this item
-            x = randint(room.x1+1, room.x2-1)
-            y = randint(room.y1+1, room.y2-1)
-     
-            #only place it if the tile is not blocked
-            if not self.is_blocked(x, y):
-                dice = randint(0, 100)
-                if dice < 70:
-                    #create a healing potion (70% chance)
-                    #item_component = Item(use_function=cast_heal)
-     
-                    # item = GameObject(self, x, y, '!', 'healing potion', 
-                                      # colors.violet, item=item_component)
-                    item = HealingPotion(x, y)
-     
-                elif dice < 85:
-                    #create a lightning bolt scroll (15% chance)
-                    # item_component = Item(use_function=cast_lightning)
-     
-                    # item = GameObject(self, x, y, '#', 'scroll of lightning bolt', 
-                                      # colors.light_yellow, item=item_component)
-                    item = LightningScroll(x, y)
-     
-                else:
-                    #create a fireball scroll (15% chance)
-                    # item_component = Item(use_function=cast_fireball)
-     
-                    # item = GameObject(self, x, y, '#', 'scroll of fireball', 
-                                      # colors.light_yellow, item=item_component)
-                    item = FireballScroll(x, y)
-     
-                #else:
-                    #create a confuse scroll (15% chance)
-                    #item_component = Item(use_function=self.cast_confuse)
-     
-                    #item = GameObject(self, x, y, '#', 'scroll of confusion', 
-                    #                  colors.light_yellow, item=item_component)
-     
-                self.objects.append(item)
-                self.game.sort_obj_at(x,y)
-                
-                
                 
     def place_objects_gen(self, room, num_monsters, num_items):        
         # room = (x, y, w, h)
      
         #choose random number of items
         #num_items = randint(0, constants.MAX_ROOM_ITEMS)
-     
-        added = num_items == 0
-        for i in range(num_items):
-            while not added:
-                #choose random spot for this item
-                x = randint(room[0] - room[2] + 1, room[0] + room[2] - 1)
-                y = randint(room[1] - room[3] + 1, room[1] + room[3] - 1)
-     
-                #only place it if the tile is not blocked
-                if not self.is_blocked(x, y):
-                    added = True
-                    dice = randint(0, 100)
-                    if dice < 70:
-                        #create a healing potion (70% chance)
-                        #item_component = Item(use_function=cast_heal)
-         
-                        # item = GameObject(self, x, y, '!', 'healing potion', 
-                                          # colors.violet, item=item_component)
-                        item = HealingPotion(x, y)
-         
-                    elif dice < 85:
-                        #create a lightning bolt scroll (15% chance)
-                        # item_component = Item(use_function=cast_lightning)
-         
-                        # item = GameObject(self, x, y, '#', 'scroll of lightning bolt', 
-                                          # colors.light_yellow, item=item_component)
-                        item = LightningScroll(x, y)
-         
-                    else:
-                        #create a fireball scroll (15% chance)
-                        # item_component = Item(use_function=cast_fireball)
-         
-                        # item = GameObject(self, x, y, '#', 'scroll of fireball', 
-                                          # colors.light_yellow, item=item_component)
-                        item = FireballScroll(x, y)
-         
-                    #else:
-                        #create a confuse scroll (15% chance)
-                        #item_component = Item(use_function=self.cast_confuse)
-         
-                        #item = GameObject(self, x, y, '#', 'scroll of confusion', 
-                        #                  colors.light_yellow, item=item_component)
-         
-                    self.objects.append(item)
-                    self.game.sort_obj_at(x,y)  #items appear below other objects
-                    
+        
+        num_items = min(8 + (self.level * 2), num_monsters)
                     
         added = num_monsters == 0
         for i in range(num_monsters):
@@ -680,7 +546,25 @@ class Dungeon:
                     else:
                         #create a BarbarianTough
                         monster = BarbarianTough(self, x, y)
+                        
+                    # give it an item to drop on death if there are items left
+                    if num_items > 0:
+                        num_items = num_items - 1
+                        itmtype = randint(0,4)
+                        if itmtype == 0:
+                            itm = StringyFlesh(-1, -1)
+                        elif itmtype == 1:
+                            itm = ToughFlesh(-1, -1)
+                        elif itmtype == 2:
+                            itm = Bones(-1, -1)
+                        elif itmtype == 3:
+                            itm = HealingPotion(-1, -1)
+                        else:
+                            itm = Eyes(-1, -1)
+                        # add item to monster
+                        monster.drop_objects.append(itm)
          
+                    # add monster to dungeon
                     self.objects.append(monster)
 
                 
@@ -881,7 +765,7 @@ class Dungeon:
         else:
             self.inventory.append(item)
             self.objects.remove(item.owner)
-            self.game.message('You picked up a ' + item.owner.name + '!', colors.green)
+            self.game.message('You picked up ' + item.owner.name + '!', colors.green)
         
         
 class BasicMonster:
@@ -941,7 +825,8 @@ class BasicMonster:
             #notify player he's been seen...
             if not self.last_see_player:
                 self.last_see_player = True
-                _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
+                if (monster.x,monster.y) in _dungeon.visible_tiles:
+                    _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
             
             # Always fight if player is badly wounded or fighting other enemies
             pfraction = _dungeon.player.fighter.hp / _dungeon.player.fighter.max_hp
@@ -1117,7 +1002,7 @@ POWER_PENALTY = -POWER_BONUS / 2
 VISION_BONUS = 0.5
 VISION_PENALTY = -VISION_BONUS / 2
 DEFENSE_BONUS = 1
-DEFENSE_PENALTY = DEFENSE_BONUS / 2
+DEFENSE_PENALTY = -DEFENSE_BONUS / 2
 
 
 def bonus_power():
@@ -1167,9 +1052,8 @@ def penalty_vision():
     _dungeon.game.message("...but it makes your vision worse, too.", colors.yellow)
     
 def try_penalty(penalty1, penalty2, penalty3):
-    if randint(0,2) == 0:
-        pen = choice([penalty1, penalty2, penalty3])
-        pen()
+    pen = choice([penalty1, penalty2, penalty3])
+    pen()
         
 
 ### CAST SPELLS ###

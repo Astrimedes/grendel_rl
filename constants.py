@@ -21,7 +21,7 @@ INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
 ROOM_MAX_SIZE = 8
-ROOM_MIN_SIZE = 4
+ROOM_MIN_SIZE = 2
 MAX_ROOMS = 24
 MAX_ROOM_MONSTERS = 3
 MAX_ROOM_ITEMS = 2
@@ -38,11 +38,11 @@ FIREBALL_DAMAGE = 12
  
 # game / map settings
 FOV_ALGO = 'SHADOW' # was 'BASIC'
-FOV_ALGO_BAD = 'BASIC'
-FOV_RADIUS_BAD = 7
 FOV_LIGHT_WALLS = True
 TORCH_RADIUS = 4 #was 10
 FOV_BASIC = 'BASIC'
+FOV_ALGO_BAD = 'BASIC'
+FOV_RADIUS_BAD = TORCH_RADIUS + 1
 
 # launcher settings
 LIMIT_FPS = 30  #20 frames-per-second maximum

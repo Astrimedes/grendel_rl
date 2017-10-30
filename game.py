@@ -612,9 +612,9 @@ class Game:
                     #show the inventory; if an item is selected, use it
                     return TurnEvent(0, constants.INVENTORY)
                 else:
-                    return TurnEvent(0, 'invalid key: didnt-take-turn')
+                    return #invalid key: didnt-take-turn
                 
-        return TurnEvent(0, 'game not in Playing state or action cancelled')
+        return #game not in Playing state or action cancelled
         
         
         
@@ -696,12 +696,13 @@ class Game:
      
         #draw all objects in the list
         for obj in self.dungeon.objects:
-            if obj != self.dungeon.player:
-                self.draw_obj(obj)
-        self.draw_obj(self.dungeon.player)
+            self.draw_obj(obj)
         
         #blit the contents of "self.map_console" to the self.root_console console and present it
         self.root_console.blit(self.map_console, 0, 0, constants.MAP_WIDTH, constants.MAP_HEIGHT, 0, 0)
+        
+        # clear map_console before next update
+        self.map_console.clear()
      
         #prepare to render the GUI self.message_panel
         self.message_panel.clear(fg=colors.white, bg=colors.black)
@@ -723,51 +724,32 @@ class Game:
         pfighter = self.dungeon.player.fighter
         
         # Strength
-        c = colors.white
         diff = pfighter.power - constants.START_POWER
-        if diff != 0:
-            if diff > 0:
-                c = colors.green
-            else:
-                c = colors.red
-        self.message_panel.draw_str(1, 3, '  Strength: ' + str(pfighter.power), bg=None, fg=c)
+        note, c = make_mod_text_color(diff)
+        self.message_panel.draw_str(1, 3, '  Strength: ' + str(pfighter.power) + ' ' + note, bg=None, fg=c)
         
         # Resilience
         c = colors.white
         diff = pfighter.defense - constants.START_DEFENSE
-        if diff != 0:
-            if diff > 0:
-                c = colors.green
-            else:
-                c = colors.red
-        self.message_panel.draw_str(1, 4, 'Resilience: ' + str(pfighter.defense), bg=None, fg=c)
-        
+        note, c = make_mod_text_color(diff)
+        self.message_panel.draw_str(1, 4, 'Resilience: ' + str(pfighter.defense) + ' ' + note, bg=None, fg=c)
         
         # Speed (inverse!)
         c = colors.white
-        diff = pfighter.speed - constants.START_SPEED
-        if diff != 0:
-            if diff > 0:
-                c = colors.red
-            else:
-                c = colors.green
-        self.message_panel.draw_str(1, 5, '     Speed: ' + str(pfighter.speed), bg=None, fg=c)
-        
+        # calc display for speed: how many tiles per 1 turn?
+        spd =  round(1.0 / pfighter.speed,2)
+        diff =  spd - round(1.0/constants.START_SPEED, 2)
+        note, c = make_mod_text_color(diff)
+        self.message_panel.draw_str(1, 5, '     Speed: ' + str(spd) + ' ' + note, bg=None, fg=c)
         
         # Vision
         c = colors.white
         diff = self.dungeon.player.fov - constants.TORCH_RADIUS
-        if diff != 0:
-            if diff > 0:
-                c = colors.green
-            else:
-                c = colors.red
-        self.message_panel.draw_str(1, 6, '    Vision: ' + str(self.dungeon.player.fov), bg=None, fg=c)
-     
+        note, c = make_mod_text_color(diff)
+        self.message_panel.draw_str(1, 6, '    Vision: ' + str(self.dungeon.player.fov) + ' ' + note, bg=None, fg=c)
      
         #blit the contents of "self.message_panel" to the self.root_console console
         self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
-        
         
     def clear_obj_render(self):
         #erase all objects at their old locations, before they move
@@ -787,4 +769,20 @@ class Game:
     ### Exit Game ###
     def exit_game(self):
         self.state = constants.STATE_EXIT
+        
+"""
+Returns a tuple with (text,color)
+"""
+def make_mod_text_color(diff):
+    note = str(round(diff, 2))
+    c = colors.white
+    if diff >= 0:
+        note = '+'+note
+        if diff > 0:
+            c = colors.green
+    else:
+        c = colors.red
+        
+    return ('(' + note + ')'), c
+    
 
