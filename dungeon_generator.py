@@ -189,6 +189,100 @@ class Generator():
                     self.corridor_list.append(corridors)
  
  
+    def gen_level_default(self):
+ 
+        # build an empty dungeon, blank the room and corridor lists
+        for i in range(self.height):
+            self.level.append(['stone'] * self.width)
+        self.room_list = []
+        self.corridor_list = []
+ 
+        max_iters = self.max_rooms * 5
+ 
+        for a in range(max_iters):
+            tmp_room = self.gen_room()
+ 
+            if self.rooms_overlap or not self.room_list:
+                self.room_list.append(tmp_room)
+            else:
+                tmp_room = self.gen_room()
+                tmp_room_list = self.room_list[:]
+ 
+                if self.room_overlapping(tmp_room, tmp_room_list) is False:
+                    self.room_list.append(tmp_room)
+ 
+            if len(self.room_list) >= self.max_rooms:
+                break
+ 
+        # connect the rooms
+        for a in range(len(self.room_list) - 1):
+            self.join_rooms(self.room_list[a], self.room_list[a + 1])
+ 
+        # do the random joins
+        for a in range(self.random_connections):
+            room_1 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            self.join_rooms(room_1, room_2)
+ 
+        # do the spurs
+        for a in range(self.random_spurs):
+            room_1 = [random.randint(2, self.width - 2), random.randint(
+                     2, self.height - 2), 1, 1]
+            room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            self.join_rooms(room_1, room_2)
+ 
+        # fill the map
+        # paint rooms
+        for room_num, room in enumerate(self.room_list):
+            for b in range(room[2]):
+                for c in range(room[3]):
+                    self.level[room[1] + c][room[0] + b] = 'floor'
+ 
+        # paint corridors
+        for corridor in self.corridor_list:
+            x1, y1 = corridor[0]
+            x2, y2 = corridor[1]
+            for width in range(abs(x1 - x2) + 1):
+                for height in range(abs(y1 - y2) + 1):
+                    self.level[min(y1, y2) + height][
+                        min(x1, x2) + width] = 'floor'
+ 
+            if len(corridor) == 3:
+                x3, y3 = corridor[2]
+ 
+                for width in range(abs(x2 - x3) + 1):
+                    for height in range(abs(y2 - y3) + 1):
+                        self.level[min(y2, y3) + height][
+                            min(x2, x3) + width] = 'floor'
+ 
+        # paint the walls
+        for row in range(1, self.height - 1):
+            for col in range(1, self.width - 1):
+                if self.level[row][col] == 'floor':
+                    if self.level[row - 1][col - 1] == 'stone':
+                        self.level[row - 1][col - 1] = 'wall'
+ 
+                    if self.level[row - 1][col] == 'stone':
+                        self.level[row - 1][col] = 'wall'
+ 
+                    if self.level[row - 1][col + 1] == 'stone':
+                        self.level[row - 1][col + 1] = 'wall'
+ 
+                    if self.level[row][col - 1] == 'stone':
+                        self.level[row][col - 1] = 'wall'
+ 
+                    if self.level[row][col + 1] == 'stone':
+                        self.level[row][col + 1] = 'wall'
+ 
+                    if self.level[row + 1][col - 1] == 'stone':
+                        self.level[row + 1][col - 1] = 'wall'
+ 
+                    if self.level[row + 1][col] == 'stone':
+                        self.level[row + 1][col] = 'wall'
+ 
+                    if self.level[row + 1][col + 1] == 'stone':
+                        self.level[row + 1][col + 1] = 'wall'
+                        
     def gen_level(self):
  
         # build an empty dungeon, blank the room and corridor lists

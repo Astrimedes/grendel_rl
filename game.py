@@ -139,7 +139,7 @@ class Game:
         self.messages = []
      
         #a warm welcoming message!
-        self.message('You sneak into Heorot, home of Beowulf and his men...', colors.red)
+        #self.message('You sneak into Heorot, home of Beowulf and his men...', colors.red)
         self.message('Their music and merriment ends tonight - they all must die!', colors.red)
      
     ### MAIN LOOP ###
@@ -166,7 +166,7 @@ class Game:
                 # set total time
                 self.total_time = newtime
                 #avoid multi key presses
-                if action:
+                if action and not(action.description == constants.MOUSE_MOVED):
                     delta = newtime - self.last_command_time
                     if delta < constants.INPUT_REPEAT_DELAY:
                         action = None
@@ -269,6 +269,8 @@ class Game:
                         logging.info('Player quit.')
                         return
             elif choice == EXIT:
+                self.clear_all()
+                tdl.flush()
                 logging.info('Player quit.')
                 break
                 
@@ -298,14 +300,16 @@ class Game:
     def message(self, new_msg, color = colors.white):
         #split the message if necessary, among multiple lines
         new_msg_lines = textwrap.wrap(new_msg, constants.MSG_WIDTH)
-     
-        for line in new_msg_lines:
-            #if the buffer is full, remove the first line to make room for the new one
-            if len(self.messages) == constants.MSG_HEIGHT:
-                del self.messages[0]
-     
-            #add the new line as a tuple, with the text and the color
-            self.messages.append((line, color))
+        height = len(new_msg_lines)
+        
+        remove = (len(self.messages) + height) - constants.MSG_HEIGHT
+        while remove > 0:
+            self.messages.pop()
+            remove -= 1
+        
+        for i in range(height):
+            self.messages.insert(0, (new_msg_lines[height-i-1],color))
+            
             
     ### POP UP ###
     def msgbox(self, text, width=50):
@@ -336,7 +340,7 @@ class Game:
         #print all the options
         y = header_height
         letter_index = ord('a')
-        c2 = (colors.light_grey, colors.white)
+        c2 = (colors.lightest_grey, colors.lighter_grey)
         for idx, option_text in enumerate(options):
             text = '(' + chr(letter_index) + ') ' + option_text
             if idx % 2 == 0:
@@ -578,7 +582,7 @@ class Game:
                     logging.debug("Mouse coord: %s", self.mouse_coord)
             if not (keydown):
                 if mousemove:
-                    return TurnEvent(0, 'mouse moved')
+                    return TurnEvent(0, description=constants.MOUSE_MOVED)
                 return
             
             if user_input.key == 'ENTER' and user_input.alt:
@@ -705,7 +709,7 @@ class Game:
                                              radius=self.dungeon.player.fov,
                                              lightWalls=constants.FOV_LIGHT_WALLS)
      
-        #go through all tiles, and set their background color according to the FOV
+        #go through all tiles in camera view, and set their background color according to the FOV
         for y in range(constants.CAMERA_HEIGHT):
             for x in range(constants.CAMERA_WIDTH):
                 map_x, map_y = (self.camera_x + x, self.camera_y + y)
@@ -734,21 +738,34 @@ class Game:
         #blit the contents of "self.map_console" to the self.root_console console and present it
         self.root_console.blit(self.map_console, 0, 0, constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT, 0, 0)
         
-        # clear map_console before next update
+        # clear map_console before next update and flush
         self.map_console.clear()
      
         #prepare to render the GUI self.message_panel
+        self.render_messages()
+            
+        #display names of objects under the mouse
+        self.message_panel.draw_str(1, 0, self.get_obj_names_under_mouse(), bg=None, fg=colors.light_gray)
+     
+        # write hp and stats to message_panel
+        self.render_stats()
+     
+        #blit the contents of "self.message_panel" to the self.root_console console
+        self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
+        
+        
+    def render_messages(self):
         self.message_panel.clear(fg=colors.white, bg=colors.black)
      
         #print the game messages, one line at a time
         y = 1
         for (line, color) in self.messages:
-            self.message_panel.draw_str(constants.MSG_X, y, line, bg=None, fg=color)
+            c = colors.mutate_color(color, colors.darkest_grey, (y / constants.PANEL_HEIGHT))
+            self.message_panel.draw_str(constants.MSG_X, y, line, bg=None, fg=c)
             y += 1
-            
-        #display names of objects under the mouse
-        self.message_panel.draw_str(1, 0, self.get_obj_names_under_mouse(), bg=None, fg=colors.light_gray)
-     
+    
+    
+    def render_stats(self):
         #show player's hp bar
         self.render_bar(1, 1, constants.BAR_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
             colors.light_red, colors.darker_red)
@@ -757,32 +774,41 @@ class Game:
         pfighter = self.dungeon.player.fighter
         
         # Strength
-        diff = pfighter.power - constants.START_POWER
+        stat = round(pfighter.power,1)
+        diff = round(pfighter.power - constants.START_POWER,1)
         note, c = make_mod_text_color(diff)
-        self.message_panel.draw_str(1, 3, '  Strength: ' + str(pfighter.power) + ' ' + note, bg=None, fg=c)
+        stat_msg = 'Strength: ' + str(stat) + ' '
+        self.message_panel.draw_str(1, 3, stat_msg, bg=None, fg=colors.white)
+        self.message_panel.draw_str(1+len(stat_msg), 3,  note, bg=None, fg=c)
         
-        # Resilience
-        c = colors.white
-        diff = pfighter.defense - constants.START_DEFENSE
+        # Toughness
+        stat = round(pfighter.defense, 1)
+        diff = round(pfighter.defense - constants.START_DEFENSE,1)
         note, c = make_mod_text_color(diff)
-        self.message_panel.draw_str(1, 4, 'Resilience: ' + str(pfighter.defense) + ' ' + note, bg=None, fg=c)
+        stat_msg = 'Toughness: ' + str(stat) + ' '
+        self.message_panel.draw_str(1, 4, stat_msg, bg=None, fg=colors.white)
+        self.message_panel.draw_str(1+len(stat_msg), 4,  note, bg=None, fg=c)
         
         # Speed (inverse!)
-        c = colors.white
         # calc display for speed: how many tiles per 1 turn?
-        spd =  round(1.0 / pfighter.speed,2)
-        diff =  spd - round(1.0/constants.START_SPEED, 2)
+        stat =  round(round(1.0 + (1.0 - pfighter.move_speed()),2) * 100.0)
+        diff =  stat - round(round(1.0 + (1.0 - constants.START_SPEED),2) * 100)
         note, c = make_mod_text_color(diff)
-        self.message_panel.draw_str(1, 5, '     Speed: ' + str(spd) + ' ' + note, bg=None, fg=c)
+        stat_msg = 'Speed: ' + str(stat) + '% '
+        self.message_panel.draw_str(1, 5, stat_msg, bg=None, fg=colors.white)
+        self.message_panel.draw_str(1+len(stat_msg), 5, note, bg=None, fg=c)
         
         # Vision
-        c = colors.white
-        diff = self.dungeon.player.fov - constants.TORCH_RADIUS
+        stat = round(self.dungeon.player.fov,1)
+        diff = round(self.dungeon.player.fov - constants.START_VISION,1)
         note, c = make_mod_text_color(diff)
-        self.message_panel.draw_str(1, 6, '    Vision: ' + str(self.dungeon.player.fov) + ' ' + note, bg=None, fg=c)
-     
-        #blit the contents of "self.message_panel" to the self.root_console console
-        self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
+        stat_msg = 'Vision: ' + str(stat) + ' '
+        self.message_panel.draw_str(1, 6, stat_msg, bg=None, fg=colors.white)
+        self.message_panel.draw_str(1+len(stat_msg), 6, note, bg=None, fg=c)
+        
+        # enemies left!
+        self.message_panel.draw_str(1, 8, 'Enemies: ' + str(self.dungeon.enemies_left), bg=None, fg=colors.light_flame)
+        
         
     def clear_obj_render(self):
         #erase all objects at their old locations, before they move

@@ -7,8 +7,8 @@ SCREEN_HEIGHT = 54
 TILE_SIZE = 16
  
 #size of the map
-MAP_WIDTH = 120
-MAP_HEIGHT = 120
+MAP_WIDTH = 80
+MAP_HEIGHT = 60
 
 # camera view
 CAMERA_WIDTH = 80
@@ -24,17 +24,15 @@ MSG_HEIGHT = PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 12
-ROOM_MIN_SIZE = 4
-MAX_ROOMS = 48
-MAX_ROOM_MONSTERS = 3
-MAX_ROOM_ITEMS = 2
+ROOM_MAX_SIZE = 8
+ROOM_MIN_SIZE = 3
+MAX_ROOMS = 38
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
 
 #spell values
-HEAL_AMOUNT = 6
+HEAL_AMOUNT = 18
 LIGHTNING_DAMAGE = 20
 LIGHTNING_RANGE = 5
 FIREBALL_RADIUS = 3
@@ -43,10 +41,9 @@ FIREBALL_DAMAGE = 12
 # game / map settings
 FOV_ALGO = 'SHADOW' # was 'BASIC'
 FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 4 #was 10
 FOV_BASIC = 'BASIC'
 FOV_ALGO_BAD = 'BASIC'
-FOV_RADIUS_BAD = TORCH_RADIUS + 1
+FOV_RADIUS_BAD = 5
 
 # launcher settings
 LIMIT_FPS = 20  #20 frames-per-second maximum
@@ -77,6 +74,8 @@ color_dead = colors.dark_crimson
 THRESH_HEALTH = (1, 0.66, 0.33)
 THRESH_COLORS = (colors.darkest_green, colors.dark_yellow, colors.dark_red)
 
+
+# INPUT
 MOVE = 'moved'
 MOVE_7 = 'moved_left-up'
 MOVE_8 = 'moved_up'
@@ -87,26 +86,50 @@ MOVE_1 = 'moved_left-down'
 MOVE_2 = 'moved_down'
 MOVE_3 = 'moved_right-down'
 
-
 ATTACK = 'attacked'
 INVENTORY = 'inventory'
 WAIT = 'waited'
 PICK_UP = 'picked up'
 DROP = 'drop'
+MOUSE_MOVED = 'mouse'
 
 INPUT_REPEAT_DELAY = 1.0 / (LIMIT_FPS / 2.0)
 
 # starting stat levels
-START_POWER = 8
+START_POWER = 5
 START_SPEED = 1.25
 START_ATK_SPEED = -0.25
 START_DEFENSE = 2
+START_VISION = 4
 
 # worst stat levels
 MIN_POWER = 3
 MIN_DEFENSE = 0
-MAX_SPEED = 2.0
-MIN_VISION = 3
+MAX_SPEED = 2.0 # real stat
+MIN_SPEED_DSP = 0.5 # inverted for display
+MIN_VISION = 2
 
 # best stat levels
-MIN_SPEED = 0.1
+MIN_SPEED = 0.34
+
+# Display bars
+# MIN
+BARMIN_STR = MIN_POWER
+BARMIN_SPD = 1.0 / MAX_SPEED 
+BARMIN_RES = MIN_DEFENSE
+BARMIN_VIS = MIN_VISION
+# MAX
+BARMIN_STR = MIN_POWER
+BARMIN_SPD = 1.0 / MAX_SPEED 
+BARMIN_RES = MIN_DEFENSE
+BARMIN_VIS = MIN_VISION
+
+
+# consumable body part names
+PART_POWER = 'Muscles'
+PART_DEF = 'Torso'
+PART_SPEED = 'Legs'
+PART_FOV = 'Eyes'
+
+# indicates 1 tile away
+MIN_PDIST = 1.415

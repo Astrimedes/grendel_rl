@@ -116,25 +116,25 @@ class HealingPotion(GameObject):
 class ToughFlesh(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_power, inv_description='(+Strength,-Speed)')
-        GameObject.__init__(self, _dungeon, x, y, 'x', 'Fatty tissue',
+        GameObject.__init__(self, _dungeon, x, y, 'x', constants.PART_POWER,
             colors.dark_sepia, item=itm)
             
 class StringyFlesh(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
-        GameObject.__init__(self, _dungeon, x, y, '~', 'Muscle',
+        GameObject.__init__(self, _dungeon, x, y, '~', constants.PART_SPEED,
             colors.light_flame, item=itm)
             
 class Eyes(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_vision, inv_description='(+Vision,-Resistance)')
-        GameObject.__init__(self, _dungeon, x, y, '*', 'Eyes',
+        itm = Item(bonus_vision, inv_description='(+Vision,-Toughness)')
+        GameObject.__init__(self, _dungeon, x, y, '*', constants.PART_FOV,
             colors.light_blue, item=itm)
             
 class Bones(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_defense, inv_description='(+Resistance,-Vision)')
-        GameObject.__init__(self, _dungeon, x, y, '-', 'Bones',
+        itm = Item(bonus_defense, inv_description='(+Toughness,-Vision)')
+        GameObject.__init__(self, _dungeon, x, y, '-', constants.PART_DEF,
             colors.white, item=itm)
        
             
@@ -154,7 +154,7 @@ class FireballScroll(GameObject):
         
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, speed=1, atk_speed=0, death_function=None, weapon=None):
+    def __init__(self, hp, defense, power, speed=1, death_function=None, weapon=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -167,13 +167,24 @@ class Fighter:
         
         # used to determine when to act
         self.speed = speed
-        self.atk_speed = atk_speed
         self.last_turn = 0
+        
+    def move_speed(self):
+        return self.speed
+        
+    def attack_speed(self):
+        if self.weapon:
+            return self.speed + self.weapon.speed
+        else:
+            return self.speed
         
     def pass_time(self):
         logging.debug('%s fighter.pass_time()', self.owner.name)
         if self.owner.ai:
-            while self.owner.dungeon.turn - self.last_turn >= self.speed:
+            t = self.move_speed()
+            if self.owner.ai.pdistance <= constants.MIN_PDIST and self.owner.fighter.weapon:
+                t = self.attack_speed()
+            while self.owner.dungeon.turn - self.last_turn >= t:
                 self.last_turn += self.owner.ai.take_turn()
                 logging.debug('%s ai.take_turn()', self.owner.name)
         else:
@@ -223,6 +234,8 @@ class Fighter:
                 
     def attack(self, target):
     
+        logging.info('Turn ' + str(round(_dungeon.turn,2)) + ': ' + self.owner.name + ' attacks ' + target.name)
+    
         if not self.weapon:
             logging.debug('%s No weapon equipped', self.owner.name)
             #a simple formula for attack damage
@@ -243,12 +256,6 @@ class Fighter:
         else:
             self.owner.dungeon.game.message(self.owner.name + ' attacks ' + target.name + 
                   ' but it has no effect!')
-                      
-            # add atk speed for monsters (player's last_turn is set based on his already-added atk_spd at turn advancement)
-            if not self.owner == self.owner.dungeon.player:
-                self.last_turn += self.atk_speed
-                if self.weapon:
-                    self.last_turn += self.weapon.speed
  
     def heal(self, amount):
         #heal by the given amount, without going over the maximum
@@ -264,14 +271,19 @@ class Player(GameObject):
     
         #create object representing the player
         fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
-                                    speed=constants.START_SPEED, atk_speed=constants.START_ATK_SPEED, death_function=self.death)
-        fighter_component.attack_verbs = ['rake', 'scratch', 'tear', 'attack']
-        fighter_component.weapon_names = ['claws', 'great claws', 'bloody claws']
+                                    speed=constants.START_SPEED, death_function=self.death)
+        
+        weapon = Weapon(min_dmg=3, max_dmg=8, speed=constants.START_ATK_SPEED, 
+        attack_names=['claws', 'great claws', 'bloody claws'], 
+        attack_verbs=['rake', 'gouge', 'tear', 'impale'], 
+        map_char = 'w', map_color = colors.white)
+        
+        fighter_component.weapon = weapon
         
         GameObject.__init__(self, dungeon, 0, 0, 'G', 'Grendel', constants.THRESH_COLORS[0], blocks=True, 
                         fighter=fighter_component)
                         
-        self.fov = constants.TORCH_RADIUS
+        self.fov = constants.START_VISION
                         
                         
     def weapon(self):
@@ -295,26 +307,33 @@ class Barbarian(GameObject):
         barb_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             vision_range=constants.FOV_RADIUS_BAD)
             
-        barb_fighter = Fighter(hp=6+dungeon.level, defense=1+dungeon.level, power=3+dungeon.level, 
-            speed=1, atk_speed=-0.34, death_function=self.death)
-            
-        barb_fighter.attack_verbs = ['chops', 'cuts', 'connects with']
-        barb_fighter.weapon_names = ['handaxe', 'wildly swinging axe', 'axe']
+        barb_fighter = Fighter(hp=9, defense=1, power=3, 
+            speed=1, death_function=self.death)
+        
+        weapon = Weapon(min_dmg=1, max_dmg=5, speed=-0.1, 
+        attack_names=['short sword', 'sword'], 
+        attack_verbs=['hacks', 'slashes', 'pokes'], 
+        map_char = 'w', map_color = colors.white)
+        
+        barb_fighter.weapon = weapon
         
         # objects that drop upon death
         self.drop_objects = []
                  
-        GameObject.__init__(self, dungeon, x, y, 'd', barb_name() + ' the Dane', colors.dark_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'd', barb_name() + ' the Scout', colors.dark_orange, blocks=True, 
                  fighter=barb_fighter, ai=barb_ai, item=None)
                  
                  
-    def death(self):
+    def death(self):    
         #transform it into a nasty corpse! it doesn't block, can't be
         #attacked and doesn't move
         self.dungeon.game.message(self.name + 
             choice([' dies!', 
             ' is destroyed!', 
             " dies screaming!"]), colors.orange)                
+            
+        # descrease enemy count
+        self.dungeon.enemies_left -= 1
                 
         for itm in self.drop_objects:
             # give it this position
@@ -323,7 +342,7 @@ class Barbarian(GameObject):
             # add to dungeon
             _dungeon.objects.append(itm)
             # announce
-            _dungeon.game.message('You spot intact' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
+            _dungeon.game.message('You spot intact ' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
                 
         # transform to corpse
         self.name = 'corpse of ' + self.name
@@ -341,19 +360,24 @@ class Barbarian(GameObject):
 class BarbarianTough(Barbarian):
     #BarbarianTough monster GameObject
     def __init__(self, dungeon, x, y):
-        zombi_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
+        bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
         
-        zombi_fighter = Fighter(hp=10+dungeon.level, defense=2+dungeon.level, power=5+dungeon.level,
-            speed=1.5, atk_speed = -0.5, death_function=self.death)
-        zombi_fighter.attack_verbs = ['cleaves', 'chops', 'carves']
-        zombi_fighter.weapon_names = ['battle axe', 'mighty axe', 'well-worn axe']
+        bt_fighter = Fighter(hp=18, defense=3, power=6,
+            speed=1.5, death_function=self.death)
+        
+        weapon = Weapon(min_dmg=3, max_dmg=7, speed=-0.5, 
+        attack_names=['battle axe', 'mighty axe'], 
+        attack_verbs=['cleaves', 'chops', 'carves'], 
+        map_char = 'w', map_color = colors.white)
+        
+        bt_fighter.weapon = weapon
         
         # objects that drop upon death
         self.drop_objects = []
         
-        GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Dane Chieftan', colors.dark_orange, blocks=True, 
-                 fighter=zombi_fighter, ai=zombi_ai, item=None)
+        GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
+                 fighter=bt_fighter, ai=bt_ai, item=None)
             
         
         
@@ -376,7 +400,7 @@ class Weapon(Item):
                  item=self)
         
     def roll_dmg(self, owner_ftr, target_ftr):
-        return randint(self.min_dmg, self.max_dmg) + (owner_ftr.power//2) - target_ftr.defense
+        return round(randint(self.min_dmg, self.max_dmg) + (owner_ftr.power/2) - target_ftr.defense)
     
     #override Item
     def name(self):
@@ -436,6 +460,8 @@ class Dungeon:
         self.turn = 0
         
         self.combatants = []
+        
+        self.enemies_left = 0
 
     def create_player(self):
         if self.player:
@@ -466,8 +492,9 @@ class Dungeon:
         rooms = []
         num_rooms = 0
         
-        items_left = 0
-        monsters_left = constants.MAX_ROOMS + (self.level * 4)
+        
+        monsters_left = constants.MAX_ROOMS * 2
+        items_left = monsters_left // 2
         
         # generate layout
         gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
@@ -484,23 +511,28 @@ class Dungeon:
                     t.blocked = False
                     t.block_sight = False
                     
-        # add player to first room
         # room = (x, y, w, h)
-        room = gen.room_list[0]
-        self.player.x = room[0]
-        self.player.y = room[1]
-        
-        #gen.gen_tiles_level()
         
         # add items to rooms
-        while monsters_left > 0 or items_left > 0:
-            for new_room in gen.room_list:
-                # add some contents to this room, such as monsters
-                items = randint(0, min(items_left, 2))
-                items_left -= items
-                
-                monsters = randint(0, min(monsters_left, 2))
+        added_player = False
+        while monsters_left > 0:
+            for i, new_room in enumerate(gen.room_list):
+                # only add player to first room
+                if i == 0:
+                    if not added_player:
+                        self.player.x = new_room[0]
+                        self.player.y = new_room[1]
+                        added_player = True
+                    continue
+            
+                # qty of monsters can depend on room size
+                max_monsters = round((new_room[2] * new_room[3])/3.0)
+                monsters = randint(0, min(monsters_left, max_monsters))
                 monsters_left -= monsters
+            
+                # item qty depends on monster count
+                items = randint(0, min(items_left, monsters))
+                items_left -= items
                 
                 # add them!
                 self.place_objects_gen(new_room, monsters, items)
@@ -509,27 +541,27 @@ class Dungeon:
                 
     def place_objects_gen(self, room, num_monsters, num_items):        
         # room = (x, y, w, h)
-     
-        #choose random number of items
-        #num_items = randint(0, constants.MAX_ROOM_ITEMS)
-        
-        num_items = min(8 + (self.level * 2), num_monsters)
-                    
-        added = num_monsters == 0
+        tries = 0
+        mon_left = num_monsters
         for i in range(num_monsters):
-            while not added:
+            added = False
+            while not(added) and tries < 10:
+                tries += 1
+            
                 #choose random spot for this monster
                 x = randint(room[0] - room[2] + 1, room[0] + room[2] - 1)
                 y = randint(room[1] - room[3] + 1, room[1] + room[3] - 1)
          
                 #only place it if the tile is not blocked
                 if not self.is_blocked(x, y):
+                    self.enemies_left += 1
+                    mon_left -= 1
                     added = True
-                    if randint(0, 100) < 65:  #65% chance of getting a skeleton
-                        #create a Barbarian
+                    if randint(0, 100) < 65:  #65% chance of getting a chump
+                        #create a chump
                         monster = Barbarian(self, x, y)
                     else:
-                        #create a BarbarianTough
+                        #create a tough guy
                         monster = BarbarianTough(self, x, y)
                         
                     # give it an item to drop on death if there are items left
@@ -707,12 +739,10 @@ class Dungeon:
         #attack if target found, move otherwise
         if target is not None:
             self.player.fighter.attack(target)
-            turns_used = self.player.fighter.speed + self.player.fighter.atk_speed
-            if self.player.fighter.weapon:
-                turns_used += self.player.fighter.weapon.speed
+            turns_used = self.player.fighter.attack_speed()
         else:
             if self.move(self.player, dx, dy):
-                turns_used = self.player.fighter.speed
+                turns_used = self.player.fighter.move_speed()
                 self.game.fov_recompute = True
         return turns_used
 
@@ -759,7 +789,7 @@ class BasicMonster:
     FIGHT = 'fight'
 
     #AI for a basic monster.
-    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.TORCH_RADIUS, 
+    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION, 
         flee_health=0.35, flee_chance=0.7, curses=['The vile beast is here!','The thing from the moors! Die, monster!', 'Kill the beast!']):
         
         self.fov = fov_algo
@@ -776,6 +806,9 @@ class BasicMonster:
         self.last_action = ''
         self.last_see_player = False
         
+        # distance to player last check
+        self.pdistance = 999
+        
         self.leader = False
 
     def take_turn(self):
@@ -783,20 +816,20 @@ class BasicMonster:
         monster = self.owner
         
         # monster pathfinding
-        distance = self.dungeon.distance_to(monster, self.dungeon.player)
+        self.pdistance = self.dungeon.distance_to(monster, self.dungeon.player)
         
-        logging.debug('%s: %s distance from player', self.owner.name, distance)
+        logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
         
         # ignore if monster too far away
-        if distance > constants.DEFAULT_PATHSIZE:
+        if self.pdistance > constants.DEFAULT_PATHSIZE:
             self.last_action = ''
             self.last_see_player = False
             return monster.fighter.speed
         
         # monster fov if near enough to player
         monster_view = tdl.map.quickFOV(monster.x, monster.y,
-                                     is_visible_tile)
-        logging.info('%s tries an FOV...', self.owner.name)
+                                     is_visible_tile, radius = self.fov_radius)
+                                     
                                      # self.fov,
                                      # radius=self.fov_radius,
                                      # lightWalls=constants.FOV_LIGHT_WALLS)
@@ -816,24 +849,29 @@ class BasicMonster:
             # Always fight if player is badly wounded or fighting other enemies
             pfraction = _dungeon.player.fighter.hp / _dungeon.player.fighter.max_hp
             if len(_dungeon.combatants) > 1 or pfraction < 0.4:
-                return self.take_fight(distance)
+                return self.take_fight()
             
             # Flee if badly wounded
             fraction = monster.fighter.hp / monster.fighter.max_hp
             flee = (fraction < self.flee_health and pfraction > 0.55) and (self.last_action == BasicMonster.FLEE or randfloat(0.0,1.0) < self.flee_chance)
             if flee:
-                return self.take_flee(distance)
+                return self.take_flee()
             # Otherwise, Fight!
             else:
-                return self.take_fight(distance)
+                return self.take_fight()
         else:
-            # move towards allies if player position is unknown
             self.last_see_player = False
-            return self.move_towards_ally(constants.DEFAULT_PATHSIZE)
+            act = randint(0,12)
+            if act == 0:
+                return self.move_towards_ally(constants.DEFAULT_PATHSIZE) # move towards allies
+            elif act < 4:
+                return self.take_fight() # move towards player
+            else:
+                return monster.fighter.speed # do nothing
                 
         
     # Flee! (return turns used)
-    def take_flee(self, distance):
+    def take_flee(self):
     
         if not(self.last_action == BasicMonster.FLEE):
             self.last_action = BasicMonster.FLEE
@@ -902,9 +940,9 @@ class BasicMonster:
             target = best_path[best_idx]
             _dungeon.move_astar(self.owner, target[0], target[1])
             tcod.path_delete(best_path)
-            return self.owner.fighter.speed
+            return self.owner.fighter.move_speed()
             
-        return self.take_fight(distance)
+        return self.take_fight()
         
         
     def move_towards_ally(self, max_dist=20):
@@ -926,35 +964,34 @@ class BasicMonster:
         else:
             _dungeon.move_towards(self.owner, _dungeon.player.x, _dungeon.player.y)
             
-        return self.owner.fighter.speed
+        return self.owner.fighter.move_speed()
                 
     # Fight! (return turns used)
-    def take_fight(self, distance):
+    def take_fight(self):
         curse = False
         if self.last_action != BasicMonster.FIGHT:
             self.last_action = BasicMonster.FIGHT
-            curse = not(self.cursed)
+            curse = not(self.cursed) and self.pdistance <= self.fov_radius
         #move towards player if far away
         if curse:
             _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
             self.cursed = True
         
-        if distance > 1.415:
-            logging.info('%s wants to move towards player. distance = %s', self.owner.name, distance)
+        if self.pdistance > constants.MIN_PDIST:
+            logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.dungeon.player.x, self.dungeon.player.y)
             #return turns used
-            return self.owner.fighter.speed
+            return self.owner.fighter.move_speed()
         else:
             #close enough, attack!
             self.owner.fighter.attack(self.dungeon.player)
-            return self.owner.fighter.speed + self.owner.fighter.atk_speed
-            
+            return self.owner.fighter.attack_speed()        
             
         
         
 class LeaderMonster(BasicMonster):
     #AI for a 'leader' monster (other monsters try to stay near them)
-    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.TORCH_RADIUS, 
+    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION, 
         flee_health=0.2, flee_chance=0.1, curses=['The vile beast is here!','The thing from the moors! Die, monster!', 'Kill the beast!']):
         
         BasicMonster.__init__(self, dungeon, fov_algo, vision_range, 
@@ -980,66 +1017,81 @@ def is_visible_tile(x, y):
         return True
         
 ### FLESH POWERUPS ###
-SPEED_BONUS = -0.05
-SPEED_PENALTY = -SPEED_BONUS / 2
-POWER_BONUS = 2
-POWER_PENALTY = -POWER_BONUS / 2
-VISION_BONUS = 0.5
-VISION_PENALTY = -VISION_BONUS / 2
-DEFENSE_BONUS = 1
-DEFENSE_PENALTY = -DEFENSE_BONUS / 2
+PEN_FRAC = 0.75
+SPEED_BONUS = -0.06
+SPEED_PENALTY = -SPEED_BONUS * PEN_FRAC
+POWER_BONUS = 3
+POWER_PENALTY = -POWER_BONUS * PEN_FRAC
+VISION_BONUS = 0.6
+VISION_PENALTY = -VISION_BONUS * PEN_FRAC
+DEFENSE_BONUS = 1.5
+DEFENSE_PENALTY = -DEFENSE_BONUS * PEN_FRAC
 
 COLOR_BONUS = colors.dark_green
 COLOR_PENALTY = colors.dark_flame
 
+# PART_POWER = 'Muscles'
+# PART_DEF = 'Torso'
+# PART_SPEED = 'Legs'
+# PART_FOV = 'Eyes'
+
 def bonus_power():
-    _dungeon.player.fighter.power += POWER_BONUS
-    _dungeon.game.message("Consuming your enemy's fat makes you feel stronger!", COLOR_BONUS)
     # penalize speed
     penalty_speed()
+
+    _dungeon.player.fighter.power += POWER_BONUS
+    _dungeon.game.message("Consuming your enemy's " + constants.PART_POWER + ' makes you feel stronger!', COLOR_BONUS)
+    
     #try_penalty(penalty_vision, penalty_speed, penalty_defense)
     return True
             
 def penalty_power():
     _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + POWER_PENALTY, constants.MIN_POWER)
-    _dungeon.game.message("...but it makes you feel weaker, too.", COLOR_PENALTY)
+    _dungeon.game.message("Eating the " + constants.PART_SPEED + " makes you feel weaker, too.", COLOR_PENALTY)
     
 def bonus_defense():
-    _dungeon.player.fighter.defense += DEFENSE_BONUS
-    _dungeon.game.message("Consuming your enemy's bones makes you feel more resilient!", COLOR_BONUS)
     # penalize vision
     penalty_vision()
+
+    _dungeon.player.fighter.defense += DEFENSE_BONUS
+    _dungeon.game.message("Consuming your enemy's " + constants.PART_DEF + ' makes you feel tougher!', COLOR_BONUS)
+   
     #try_penalty(penalty_vision, penalty_power, penalty_speed)
     return True    
     
 def penalty_defense():
     _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + DEFENSE_PENALTY, constants.MIN_DEFENSE)
-    _dungeon.game.message("...but it makes you feel less resilient, too.", COLOR_PENALTY)
+    _dungeon.game.message("Eating the " + constants.PART_FOV + " makes you feel less tough, too.", COLOR_PENALTY)
     
 def bonus_speed():
-    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
-    _dungeon.game.message("Consuming your enemy's muscle makes you feel faster!", COLOR_BONUS)
     # penalize power
     penalty_power()
+
+    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
+    _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
+   
     #try_penalty(penalty_vision, penalty_power, penalty_defense)
     return True
     
 def penalty_speed():
     _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + SPEED_PENALTY, constants.MAX_SPEED)
-    _dungeon.game.message("...but it makes you feel slower, too.", COLOR_PENALTY)
+    _dungeon.game.message("Eating the " + constants.PART_POWER + " makes you feel slower, too.", COLOR_PENALTY)
     
 def bonus_vision():
-    _dungeon.game.fov_recompute = True
-    _dungeon.player.fov += VISION_BONUS
-    _dungeon.game.message("Consuming your enemy's eyes improves your vision!", COLOR_BONUS)
     # penalize defense
     penalty_defense()
+
+    _dungeon.game.fov_recompute = True
+    _dungeon.player.fov += VISION_BONUS
+    _dungeon.game.message("Consuming your enemy's " + constants.PART_FOV + ' improves your vision!', COLOR_BONUS)
+    
     #try_penalty(penalty_speed, penalty_power, penalty_defense)
     return True
     
 def penalty_vision():
+    _dungeon.game.fov_recompute = True
     _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, constants.MIN_VISION)
-    _dungeon.game.message("...but it makes your vision worse, too.", COLOR_PENALTY)
+    _dungeon.game.message("Eating the " + constants.PART_DEF + " makes your vision worse, too.", COLOR_PENALTY)
     
 def try_penalty(penalty1, penalty2, penalty3):
     pen = choice([penalty1, penalty2, penalty3])
