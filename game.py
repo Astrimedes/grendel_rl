@@ -41,6 +41,10 @@ class Game:
         self.last_command_time = -999
         
         self.menu_invoked = False
+        
+        # map x,y tile of camera position (should center on player)
+        self.camera_x = 0
+        self.camera_y = 0
     
     ### SAVE AND LOAD GAME ###
     def save_game(self):
@@ -143,6 +147,7 @@ class Game:
      
         action = None
         self.mouse_coord = (0, 0)
+        self.last_command_time = 0
         
         while not tdl.event.is_window_closed():
             action = None
@@ -152,39 +157,32 @@ class Game:
                 self.render_all()
                 tdl.flush()
                 self.clear_obj_render()
-                
-            #track time
-            newtime = time.process_time()
-            self.total_time = newtime
-            
-            #handle keys and exit game if needed
+                            
             while not(action):
+                #poll user input
                 action = self.handle_keys()
+                #get time
+                newtime = time.process_time()
+                # set total time
+                self.total_time = newtime
+                #avoid multi key presses
+                if action:
+                    delta = newtime - self.last_command_time
+                    if delta < constants.INPUT_REPEAT_DELAY:
+                        action = None
+                    self.last_command_time = newtime
+                
             
             if not action:
                 desc = 'None'
             else:
                 desc = action.description
-                delta = 100
                 
                 if self.state == constants.STATE_PLAYING:
                     #avoid numpad's numlock-on multi key press sending 2 keys to repeat the action
                     moved = desc in [constants.MOVE_1, constants.MOVE_2, constants.MOVE_3, constants.MOVE_4, 
                         constants.MOVE_6, constants.MOVE_7, constants.MOVE_8, constants.MOVE_9]
                     if moved or desc in [constants.PICK_UP, constants.DROP, constants.INVENTORY, constants.WAIT]:
-                        if desc == self.last_command:
-                            delta = newtime - self.last_command_time
-                        
-                        self.last_command_time = newtime
-                        self.last_command = desc
-                        if delta < constants.INPUT_REPEAT_DELAY:
-                            logging.info('COMMAND %s: delta (%s) < allowed delay (%s)', desc, delta, constants.INPUT_REPEAT_DELAY)
-                            time.sleep(constants.INPUT_REPEAT_DELAY)
-                            tdl.flush()
-                            continue
-                        else:
-                            logging.info('desc = %s, %s = last_command, %s delta, %s total time', desc, self.last_command, delta, self.total_time)
-                    
                         picked_up = False
                         # evaluate delayed actions (selection screens mostly)
                         if moved:
@@ -202,18 +200,11 @@ class Game:
                         if moved or picked_up:
                             names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
                             if names:
-                                self.message('You see items here: ' + names + '. Press g to pick up.')
+                                self.message('You see tasty flesh here: ' + names + '. Press g to take some.')
                         
                         #let monsters take their turn: during play state, when a turn has passed
                         if action.turns_used > 0:
                             self.dungeon.ai_act(action.turns_used)
-                            
-                            
-                        
-                
-                    logging.debug('play_game, state = %s, action = %s', self.state, desc)
-                    
-                    logging.debug('%s - action taken', desc)
                     
                 #exit if player pressed exit
                 elif self.state == constants.STATE_EXIT:
@@ -294,10 +285,10 @@ class Game:
         tdl.set_font('terminal16x16.png', greyscale=True)
         self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
                         fullscreen=False)
-        self.map_console = tdl.Console(constants.MAP_WIDTH, constants.MAP_HEIGHT)
+        self.map_console = tdl.Console(constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT)
         self.message_panel = tdl.Console(constants.SCREEN_WIDTH, constants.PANEL_HEIGHT)
         
-        #tdl.setFPS(constants.LIMIT_FPS)
+        tdl.setFPS(constants.LIMIT_FPS)
         
         ### start main menu ###
         self.main_menu()
@@ -345,9 +336,14 @@ class Game:
         #print all the options
         y = header_height
         letter_index = ord('a')
-        for option_text in options:
+        c2 = (colors.light_grey, colors.white)
+        for idx, option_text in enumerate(options):
             text = '(' + chr(letter_index) + ') ' + option_text
-            window.draw_str(0, y, text, bg=None)
+            if idx % 2 == 0:
+                c = c2[0]
+            else:
+                c = c2[1]
+            window.draw_str(0, y, text, fg=c, bg=None)
             y += 1
             letter_index += 1
      
@@ -387,19 +383,18 @@ class Game:
 
         
     ### INVENTORY ###
-    def inventory_menu(self, header='Press the key next to an item to ' +
-                                             'use it, or any other to cancel.\n'):
+    def inventory_menu(self, header="Press an item's key to eat it, or any other to cancel.\n"):
         #show a menu with each item of the inventory as an option
         weapon = self.dungeon.player.weapon()
         if len(self.dungeon.inventory) == 0 and not weapon:
-            options = ['Inventory is empty.']
+            options = ['No items.  Kill more men!']
         else:
             options = []
             for item in self.dungeon.inventory:
                 if item == weapon:
                     options.append(item.name() + '----[Equipped Weapon]')
                 else:
-                    options.append(item.name())
+                    options.append(item.inventory_name())
      
         index = self.menu(header, options, constants.INVENTORY_WIDTH)
         logging.info('Inventory: chose index %s', index)
@@ -413,6 +408,32 @@ class Game:
         return self.dungeon.inventory[index]
 
         
+    ### Camera ###
+    def to_camera_coordinates(self, x, y):
+        #convert coordinates on the map to coordinates on the screen
+        (x, y) = (int(x - self.camera_x), int(y - self.camera_y))
+ 
+        if (x < 0 or y < 0 or x >= constants.CAMERA_WIDTH or y >= constants.CAMERA_HEIGHT):
+                return (None, None)  #if it's outside the view, return nothing
+ 
+        return (x, y)
+        
+    def move_camera(self, target_x, target_y):
+ 
+        #new camera coordinates (top-left corner of the screen relative to the map)
+        x = round(target_x - (constants.CAMERA_WIDTH / 2))  #coordinates so that the target is at the center of the screen
+        y = round(target_y - (constants.CAMERA_HEIGHT / 2))
+ 
+        #make sure the camera doesn't see outside the map
+        if x < 0: x = 0
+        if y < 0: y = 0
+        if x > constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1: x = constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1
+        if y > constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1: y = constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1
+ 
+        if x != self.camera_x or y != self.camera_y: self.fov_recompute = True
+        (self.camera_x, self.camera_y) = (x, y)
+        
+    
     ### TARGETING ###
     def target_tile(self, max_range=None, target_size=0):
         #return the position of a tile left-clicked in player's FOV (optionally in 
@@ -438,8 +459,8 @@ class Game:
             
             #accept the target if the player clicked in FOV, and in case a range is 
             #specified, if it's in that range
-            x = self.mouse_coord[0]
-            y = self.mouse_coord[1]
+            x = self.mouse_coord[0] + self.camera_x
+            y = self.mouse_coord[1] + self.camera_y
             
             #update targeting area
             if (x,y) != last_coord or clicked:
@@ -475,7 +496,8 @@ class Game:
  
     def get_obj_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
-        (x, y) = self.mouse_coord
+        x = self.mouse_coord[0] + self.camera_x
+        y = self.mouse_coord[1] + self.camera_y
         return self.get_obj_names_at(x, y)
         
     def get_obj_names_at(self, x, y):
@@ -543,15 +565,20 @@ class Game:
         for event in tdl.event.get():
             
             keydown = False
+            mousemove = False
         
             if event.type == 'KEYDOWN':
                 user_input = event
                 keydown = True
                 logging.info('Key Down detected!')
             elif event.type == 'MOUSEMOTION':
-                self.mouse_coord = event.cell
-                logging.debug("Mouse coord: %s", self.mouse_coord)
+                if event.cell != self.mouse_coord:
+                    mousemove = True
+                    self.mouse_coord = event.cell
+                    logging.debug("Mouse coord: %s", self.mouse_coord)
             if not (keydown):
+                if mousemove:
+                    return TurnEvent(0, 'mouse moved')
                 return
             
             if user_input.key == 'ENTER' and user_input.alt:
@@ -571,7 +598,7 @@ class Game:
                     self.menu_invoked = False
                     return
             
-                logging.info('Turn %s: Pressed key %s , text %s', self.dungeon.turn, user_input.key, user_input.text)
+                logging.debug('Turn %s: Pressed key %s , text %s', self.dungeon.turn, user_input.key, user_input.text)
                 
                 #movement keys
                 #up left
@@ -632,6 +659,7 @@ class Game:
                 self.dungeon.pick_up(obj.item)
                 turn_action.turns_used = self.dungeon.player.fighter.speed
                 return True
+        return False
                 
     def do_inventory_use(self, turn_action):
         chosen_item = self.inventory_menu()
@@ -664,7 +692,11 @@ class Game:
         
         if  not self.dungeon:
             return
+            
+        # adjust camera
+        self.move_camera(self.dungeon.player.x, self.dungeon.player.y)
         
+        # recompute fov if required
         if self.fov_recompute:
             self.fov_recompute = False
             self.dungeon.visible_tiles = tdl.map.quickFOV(self.dungeon.player.x, self.dungeon.player.y,
@@ -674,14 +706,15 @@ class Game:
                                              lightWalls=constants.FOV_LIGHT_WALLS)
      
         #go through all tiles, and set their background color according to the FOV
-        for y in range(constants.MAP_HEIGHT):
-            for x in range(constants.MAP_WIDTH):
-                visible = (x, y) in self.dungeon.visible_tiles
-                wall = self.dungeon.map[x][y].block_sight
+        for y in range(constants.CAMERA_HEIGHT):
+            for x in range(constants.CAMERA_WIDTH):
+                map_x, map_y = (self.camera_x + x, self.camera_y + y)
+                visible = (map_x, map_y) in self.dungeon.visible_tiles
+                wall = self.dungeon.map[map_x][map_y].block_sight
                 if not visible:
                     #if it's not visible right now, the player can only see it 
                     #if it's explored
-                    if self.dungeon.map[x][y].explored:
+                    if self.dungeon.map[map_x][map_y].explored:
                         if wall:
                             self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
                         else:
@@ -692,14 +725,14 @@ class Game:
                     else:
                         self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
                     #since it's visible, explore it
-                    self.dungeon.map[x][y].explored = True
+                    self.dungeon.map[map_x][map_y].explored = True
      
         #draw all objects in the list
         for obj in self.dungeon.objects:
             self.draw_obj(obj)
         
         #blit the contents of "self.map_console" to the self.root_console console and present it
-        self.root_console.blit(self.map_console, 0, 0, constants.MAP_WIDTH, constants.MAP_HEIGHT, 0, 0)
+        self.root_console.blit(self.map_console, 0, 0, constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT, 0, 0)
         
         # clear map_console before next update
         self.map_console.clear()
@@ -759,12 +792,15 @@ class Game:
     def draw_obj(self, game_obj):
         #only show if it's visible to the player
         if (game_obj.x, game_obj.y) in self.dungeon.visible_tiles:
+            cam_x, cam_y = self.to_camera_coordinates(game_obj.x, game_obj.y)
             #draw the character that represents this object at its position
-            self.map_console.draw_char(game_obj.x, game_obj.y, game_obj.char, game_obj.color, bg=None)
+            self.map_console.draw_char(cam_x, cam_y, game_obj.char, game_obj.color, bg=None)
             
     def draw_clear(self, game_obj):
         #erase the character that represents this object
-        self.map_console.draw_char(game_obj.x, game_obj.y, ' ', game_obj.color, bg=None)
+        cam_x, cam_y = self.to_camera_coordinates(game_obj.x, game_obj.y)
+        if cam_x or cam_y:
+            self.map_console.draw_char(cam_x, cam_y, ' ', game_obj.color, bg=None)
         
     ### Exit Game ###
     def exit_game(self):

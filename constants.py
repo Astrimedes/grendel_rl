@@ -3,12 +3,16 @@ import colors
 
 #actual size of the window
 SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 53
+SCREEN_HEIGHT = 54
 TILE_SIZE = 16
  
 #size of the map
-MAP_WIDTH = 80
-MAP_HEIGHT = 43
+MAP_WIDTH = 120
+MAP_HEIGHT = 120
+
+# camera view
+CAMERA_WIDTH = 80
+CAMERA_HEIGHT = 44
  
 #sizes and coordinates relevant for the GUI
 BAR_WIDTH = 20
@@ -20,9 +24,9 @@ MSG_HEIGHT = PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 8
-ROOM_MIN_SIZE = 2
-MAX_ROOMS = 24
+ROOM_MAX_SIZE = 12
+ROOM_MIN_SIZE = 4
+MAX_ROOMS = 48
 MAX_ROOM_MONSTERS = 3
 MAX_ROOM_ITEMS = 2
 
@@ -45,7 +49,7 @@ FOV_ALGO_BAD = 'BASIC'
 FOV_RADIUS_BAD = TORCH_RADIUS + 1
 
 # launcher settings
-LIMIT_FPS = 30  #20 frames-per-second maximum
+LIMIT_FPS = 20  #20 frames-per-second maximum
 TITLE = "Grendel's Last Stand"
 AUTHOR = 'Astrimedes'
 
@@ -90,7 +94,7 @@ WAIT = 'waited'
 PICK_UP = 'picked up'
 DROP = 'drop'
 
-INPUT_REPEAT_DELAY = 1.0 / 50.0
+INPUT_REPEAT_DELAY = 1.0 / (LIMIT_FPS / 2.0)
 
 # starting stat levels
 START_POWER = 8

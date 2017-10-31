@@ -25,25 +25,6 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 _dungeon = None
-
-class Rect:
-    #a rectangle on the map. used to characterize a room.
-    def __init__(self, x, y, w, h):
-        self.x1 = x
-        self.y1 = y
-        self.x2 = x + w
-        self.y2 = y + h
- 
-    def center(self):
-        center_x = (self.x1 + self.x2) // 2
-        center_y = (self.y1 + self.y2) // 2
-        return (center_x, center_y)
- 
-    def intersect(self, other):
-        #returns true if this rectangle intersects with another one
-        return (self.x1 <= other.x2 and self.x2 >= other.x1 and
-                self.y1 <= other.y2 and self.y2 >= other.y1)
-                
                 
 class Tile:
     #a tile of the map and its properties
@@ -60,9 +41,10 @@ class Tile:
         
 class Item:
     #an item that can be picked up and used.
-    def __init__(self, use_function=None):
+    def __init__(self, use_function=None, inv_description=''):
         self.use_function = use_function
         self.owner = None
+        self.inv_description = inv_description
  
     def drop(self, obj_dropper):
         #add to the map and remove from the player's inventory. also, place it at the player's coordinates
@@ -80,6 +62,9 @@ class Item:
     
     def name(self):
         return self.owner.name
+        
+    def inventory_name(self):
+        return self.name() + ' ' + self.inv_description
  
     def use(self):
         #just call the "use_function" if it is defined
@@ -122,34 +107,34 @@ class GameObject:
             
 class HealingPotion(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(cast_heal)
-        GameObject.__init__(self, _dungeon, x, y, 'o', 'intact human heart',
+        itm = Item(cast_heal, inv_description='(heals damage)')
+        GameObject.__init__(self, _dungeon, x, y, 'o', 'Heart',
             colors.flame, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
                  
 class ToughFlesh(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_power)
-        GameObject.__init__(self, _dungeon, x, y, 'x', 'tough tasty flesh',
+        itm = Item(bonus_power, inv_description='(+Strength,-Speed)')
+        GameObject.__init__(self, _dungeon, x, y, 'x', 'Fatty tissue',
             colors.dark_sepia, item=itm)
             
 class StringyFlesh(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_speed)
-        GameObject.__init__(self, _dungeon, x, y, '~', 'stringy tasty flesh',
+        itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
+        GameObject.__init__(self, _dungeon, x, y, '~', 'Muscle',
             colors.light_flame, item=itm)
             
 class Eyes(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_vision)
-        GameObject.__init__(self, _dungeon, x, y, '*', 'intact eyes',
+        itm = Item(bonus_vision, inv_description='(+Vision,-Resistance)')
+        GameObject.__init__(self, _dungeon, x, y, '*', 'Eyes',
             colors.light_blue, item=itm)
             
 class Bones(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_defense)
-        GameObject.__init__(self, _dungeon, x, y, '-', 'large bones',
+        itm = Item(bonus_defense, inv_description='(+Resistance,-Vision)')
+        GameObject.__init__(self, _dungeon, x, y, '-', 'Bones',
             colors.white, item=itm)
        
             
@@ -338,7 +323,7 @@ class Barbarian(GameObject):
             # add to dungeon
             _dungeon.objects.append(itm)
             # announce
-            _dungeon.game.message('You spot ' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
+            _dungeon.game.message('You spot intact' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
                 
         # transform to corpse
         self.name = 'corpse of ' + self.name
@@ -482,7 +467,7 @@ class Dungeon:
         num_rooms = 0
         
         items_left = 0
-        monsters_left = (self.level * 4) + 16
+        monsters_left = constants.MAX_ROOMS + (self.level * 4)
         
         # generate layout
         gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
@@ -505,7 +490,7 @@ class Dungeon:
         self.player.x = room[0]
         self.player.y = room[1]
         
-        gen.gen_tiles_level()
+        #gen.gen_tiles_level()
         
         # add items to rooms
         while monsters_left > 0 or items_left > 0:
@@ -675,7 +660,7 @@ class Dungeon:
         #Compute the path between self's coordinates and the target's coordinates
         tcod.path_compute(my_path, game_obj.x, game_obj.y, x, y)
         
-        logging.info('%s moves a-star: start from %s,%s', game_obj.name, game_obj.x, game_obj.y)
+        logging.debug('%s moves a-star: start from %s,%s', game_obj.name, game_obj.x, game_obj.y)
         
         moved = False
  
@@ -690,14 +675,14 @@ class Dungeon:
                 game_obj.x = x
                 game_obj.y = y
                 self.game.sort_obj_at(x,y)
-                logging.info('A-star move to %s,%s', x, y)
+                logging.debug('A-star move to %s,%s', x, y)
                 moved = True
        
         #Keep the old move function as a backup so that if there are no paths (for example another monster blocks a corridor)
         #it will still try to move towards the player
         if not(moved):
             self.move_towards(game_obj, x, y) 
-            logging.info('Simple move towards %s,%s', x, y)
+            logging.debug('Simple move towards %s,%s', x, y)
  
         #Delete the path to free memory
         tcod.path_delete(my_path)
@@ -1004,52 +989,57 @@ VISION_PENALTY = -VISION_BONUS / 2
 DEFENSE_BONUS = 1
 DEFENSE_PENALTY = -DEFENSE_BONUS / 2
 
+COLOR_BONUS = colors.dark_green
+COLOR_PENALTY = colors.dark_flame
 
 def bonus_power():
     _dungeon.player.fighter.power += POWER_BONUS
-    _dungeon.game.message("Consuming your enemy's tough flesh makes you feel stronger!", colors.green)
-    try_penalty(penalty_vision, penalty_speed, penalty_defense)
+    _dungeon.game.message("Consuming your enemy's fat makes you feel stronger!", COLOR_BONUS)
+    # penalize speed
+    penalty_speed()
+    #try_penalty(penalty_vision, penalty_speed, penalty_defense)
     return True
             
 def penalty_power():
-    
     _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + POWER_PENALTY, constants.MIN_POWER)
-    _dungeon.game.message("...but it makes you feel weaker, too.", colors.yellow)
+    _dungeon.game.message("...but it makes you feel weaker, too.", COLOR_PENALTY)
     
 def bonus_defense():
     _dungeon.player.fighter.defense += DEFENSE_BONUS
-    _dungeon.game.message("Consuming your enemy's bones makes you feel more resilient!", colors.green)
-    try_penalty(penalty_vision, penalty_power, penalty_speed)
+    _dungeon.game.message("Consuming your enemy's bones makes you feel more resilient!", COLOR_BONUS)
+    # penalize vision
+    penalty_vision()
+    #try_penalty(penalty_vision, penalty_power, penalty_speed)
     return True    
     
 def penalty_defense():
-    
     _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + DEFENSE_PENALTY, constants.MIN_DEFENSE)
-    _dungeon.game.message("...but it makes you feel less resilient, too.", colors.yellow)
+    _dungeon.game.message("...but it makes you feel less resilient, too.", COLOR_PENALTY)
     
 def bonus_speed():
-    
     _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
-    _dungeon.game.message("Consuming your enemy's stringy flesh makes you feel faster!", colors.green)
-    try_penalty(penalty_vision, penalty_power, penalty_defense)
+    _dungeon.game.message("Consuming your enemy's muscle makes you feel faster!", COLOR_BONUS)
+    # penalize power
+    penalty_power()
+    #try_penalty(penalty_vision, penalty_power, penalty_defense)
     return True
     
 def penalty_speed():
-    
     _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + SPEED_PENALTY, constants.MAX_SPEED)
-    _dungeon.game.message("...but it makes you feel slower, too.", colors.yellow)
+    _dungeon.game.message("...but it makes you feel slower, too.", COLOR_PENALTY)
     
 def bonus_vision():
     _dungeon.game.fov_recompute = True
     _dungeon.player.fov += VISION_BONUS
-    _dungeon.game.message("Consuming your enemy's eyes improves your vision!", colors.green)
-    try_penalty(penalty_speed, penalty_power, penalty_defense)
+    _dungeon.game.message("Consuming your enemy's eyes improves your vision!", COLOR_BONUS)
+    # penalize defense
+    penalty_defense()
+    #try_penalty(penalty_speed, penalty_power, penalty_defense)
     return True
     
 def penalty_vision():
-    
     _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, constants.MIN_VISION)
-    _dungeon.game.message("...but it makes your vision worse, too.", colors.yellow)
+    _dungeon.game.message("...but it makes your vision worse, too.", COLOR_PENALTY)
     
 def try_penalty(penalty1, penalty2, penalty3):
     pen = choice([penalty1, penalty2, penalty3])
@@ -1132,7 +1122,7 @@ def cast_fireball():
 clockwise = [(1,0), (1,1), (0,1), (-1,1), (-1,0), (-1,-1), (0,-1), (1,-1)]
 counter =   [(-1,0), (-1,1), (0,1), (1,1), (1,0), (1,-1), (0,-1), (-1,-1)]
 def rotate_pt(point, turn_clockwise=True):
-    logging.info('rotate %s. clockwise=%s', point, turn_clockwise)
+    #logging.debug('rotate %s. clockwise=%s', point, turn_clockwise)
     if not(point in clockwise):
         #pick random position
         return choice(clockwise)
