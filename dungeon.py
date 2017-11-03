@@ -134,7 +134,7 @@ class Eyes(GameObject):
 class Bones(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_defense, inv_description='(+Toughness,-Vision)')
-        GameObject.__init__(self, _dungeon, x, y, '-', constants.PART_DEF,
+        GameObject.__init__(self, _dungeon, x, y, '-', constants.PART_DEFENSE,
             colors.white, item=itm)
        
             
@@ -204,7 +204,7 @@ class Fighter:
                     break
  
     def take_damage(self, attacker_name, attack_verb, weapon_name, attack_color, damage):
-        if damage > 0:
+        if damage > 0 and self.hp > 0:
         
             selfname = self.owner.name
             
@@ -234,12 +234,12 @@ class Fighter:
                 
     def attack(self, target):
     
-        logging.info('Turn ' + str(round(_dungeon.turn,2)) + ': ' + self.owner.name + ' attacks ' + target.name)
+        logging.info('Turn ' + str(round(_dungeon.turn,2)) + ', Last Turn: ' + str(self.last_turn) + ", " + self.owner.name + ' attacks ' + target.name)
     
         if not self.weapon:
             logging.debug('%s No weapon equipped', self.owner.name)
             #a simple formula for attack damage
-            damage = randint((self.power//2)+_dungeon.level, self.power+_dungeon.level+1) - target.fighter.defense
+            damage = randint(1, self.power) - target.fighter.defense
         else:
             damage = self.weapon.roll_dmg(self, target.fighter)
             
@@ -310,7 +310,7 @@ class Barbarian(GameObject):
         barb_fighter = Fighter(hp=9, defense=1, power=3, 
             speed=1, death_function=self.death)
         
-        weapon = Weapon(min_dmg=1, max_dmg=5, speed=-0.1, 
+        weapon = Weapon(min_dmg=1, max_dmg=5, speed=0, 
         attack_names=['short sword', 'sword'], 
         attack_verbs=['hacks', 'slashes', 'pokes'], 
         map_char = 'w', map_color = colors.white)
@@ -493,7 +493,7 @@ class Dungeon:
         num_rooms = 0
         
         
-        monsters_left = constants.MAX_ROOMS * 2
+        monsters_left = constants.MONSTER_COUNT
         items_left = monsters_left // 2
         
         # generate layout
@@ -512,7 +512,6 @@ class Dungeon:
                     t.block_sight = False
                     
         # room = (x, y, w, h)
-        
         # add items to rooms
         added_player = False
         while monsters_left > 0:
@@ -554,30 +553,43 @@ class Dungeon:
          
                 #only place it if the tile is not blocked
                 if not self.is_blocked(x, y):
+                
+                    # check for random 'junk' items
+                    if randint(0,10) == 0:
+                        thing = GameObject(self, x, y, 'A', 'altar', colors.white, blocks=False)
+                        self.objects.append(thing)
+                
                     self.enemies_left += 1
                     mon_left -= 1
                     added = True
-                    if randint(0, 100) < 65:  #65% chance of getting a chump
+                    tough_monster = randfloat(0, 1) <= constants.MONSTER_TOUGH
+                    if not(tough_monster):  #% chance of getting a chump
                         #create a chump
                         monster = Barbarian(self, x, y)
                     else:
                         #create a tough guy
                         monster = BarbarianTough(self, x, y)
+                    
                         
                     # give it an item to drop on death if there are items left
                     if num_items > 0:
                         num_items = num_items - 1
-                        itmtype = randint(0,4)
-                        if itmtype == 0:
-                            itm = StringyFlesh(-1, -1)
-                        elif itmtype == 1:
-                            itm = ToughFlesh(-1, -1)
-                        elif itmtype == 2:
-                            itm = Bones(-1, -1)
-                        elif itmtype == 3:
-                            itm = HealingPotion(-1, -1)
+                        itmtype = randint(0,3)
+                        if tough_monster:
+                            if itmtype == 0:
+                                itm = ToughFlesh(-1, -1)
+                            elif itmtype == 1:
+                                itm = Bones(-1, -1)
+                            else:
+                                itm = HealingPotion(-1, -1)
                         else:
-                            itm = Eyes(-1, -1)
+                            if itmtype == 0:
+                                itm = StringyFlesh(-1, -1)
+                            elif itmtype == 1:
+                                itm = Eyes(-1, -1)
+                            else:
+                                itm = HealingPotion(-1, -1)
+                        
                         # add item to monster
                         monster.drop_objects.append(itm)
          
@@ -838,7 +850,7 @@ class BasicMonster:
         
         # if monster sees player...
         if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
-            logging.info('Player is in view of %s', self.owner.name)
+            #logging.info('Player is in view of %s', self.owner.name)
             
             #notify player he's been seen...
             if not self.last_see_player:
@@ -863,9 +875,9 @@ class BasicMonster:
             self.last_see_player = False
             act = randint(0,12)
             if act == 0:
-                return self.move_towards_ally(constants.DEFAULT_PATHSIZE) # move towards allies
-            elif act < 4:
                 return self.take_fight() # move towards player
+            elif act < 4:
+                return self.move_towards_ally(constants.DEFAULT_PATHSIZE) # move towards allies
             else:
                 return monster.fighter.speed # do nothing
                 
@@ -926,7 +938,7 @@ class BasicMonster:
                 xdir = _xdir
                 ydir = _ydir
                 valid = True
-                logging.info('%s Path: %s', self.owner.name, best_path)
+                #logging.info('%s Path: %s', self.owner.name, best_path)
             else:
                 # free path from memory
                 if not path is None:
@@ -978,7 +990,7 @@ class BasicMonster:
             self.cursed = True
         
         if self.pdistance > constants.MIN_PDIST:
-            logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
+            #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.dungeon.player.x, self.dungeon.player.y)
             #return turns used
             return self.owner.fighter.move_speed()
@@ -1031,7 +1043,7 @@ COLOR_BONUS = colors.dark_green
 COLOR_PENALTY = colors.dark_flame
 
 # PART_POWER = 'Muscles'
-# PART_DEF = 'Torso'
+# PART_DEFENSE = 'Torso'
 # PART_SPEED = 'Legs'
 # PART_FOV = 'Eyes'
 
@@ -1054,7 +1066,7 @@ def bonus_defense():
     penalty_vision()
 
     _dungeon.player.fighter.defense += DEFENSE_BONUS
-    _dungeon.game.message("Consuming your enemy's " + constants.PART_DEF + ' makes you feel tougher!', COLOR_BONUS)
+    _dungeon.game.message("Consuming your enemy's " + constants.PART_DEFENSE + ' makes you feel tougher!', COLOR_BONUS)
    
     #try_penalty(penalty_vision, penalty_power, penalty_speed)
     return True    
@@ -1091,7 +1103,7 @@ def bonus_vision():
 def penalty_vision():
     _dungeon.game.fov_recompute = True
     _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, constants.MIN_VISION)
-    _dungeon.game.message("Eating the " + constants.PART_DEF + " makes your vision worse, too.", COLOR_PENALTY)
+    _dungeon.game.message("Eating the " + constants.PART_DEFENSE + " makes your vision worse, too.", COLOR_PENALTY)
     
 def try_penalty(penalty1, penalty2, penalty3):
     pen = choice([penalty1, penalty2, penalty3])
@@ -1100,20 +1112,20 @@ def try_penalty(penalty1, penalty2, penalty3):
 
 ### CAST SPELLS ###
 def cast_heal():
-    logging.info('casting heal...')
+    #logging.info('casting heal...')
 
     #heal the player
     if _dungeon.player.fighter.hp == _dungeon.player.fighter.max_hp:
         _dungeon.game.message("You should save this for when you're wounded.", colors.red)
         return False
  
-    _dungeon.game.message("You feast on your enemy's warm heart! Your wounds heal.", colors.light_violet)
-    _dungeon.player.fighter.heal(constants.HEAL_AMOUNT+_dungeon.level)
+    _dungeon.game.message("You consume your enemy's heart! Your heal " + str(constants.HEAL_AMOUNT) + ' damage.', colors.light_violet)
+    _dungeon.player.fighter.heal(constants.HEAL_AMOUNT)
     
     return True
     
 def cast_lightning(caster_gameobj=None):
-    logging.info('casting lightning...')
+    #logging.info('casting lightning...')
     
     if not caster_gameobj:
         caster_gameobj = _dungeon.player
@@ -1150,7 +1162,7 @@ def cast_lightning(caster_gameobj=None):
             # 'stumble around!', colors.light_green)
  
 def cast_fireball():
-    logging.info('casting fireball...')
+    #logging.info('casting fireball...')
 
     #ask the player for a target tile to throw a fireball at
     _dungeon.game.message('Left-click a target tile for the fireball, or right-click to ' +

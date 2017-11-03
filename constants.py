@@ -1,11 +1,11 @@
-#!/usr/bin/env pytthon3
+#!/usr/bin/env python3
 import colors
 
 #actual size of the window
 SCREEN_WIDTH = 80
 SCREEN_HEIGHT = 54
 TILE_SIZE = 16
- 
+
 #size of the map
 MAP_WIDTH = 80
 MAP_HEIGHT = 60
@@ -15,18 +15,24 @@ CAMERA_WIDTH = 80
 CAMERA_HEIGHT = 44
  
 #sizes and coordinates relevant for the GUI
-BAR_WIDTH = 20
-PANEL_HEIGHT = 10
-PANEL_Y = SCREEN_HEIGHT - PANEL_HEIGHT
-MSG_X = BAR_WIDTH + 2
-MSG_WIDTH = SCREEN_WIDTH - BAR_WIDTH - 2
-MSG_HEIGHT = PANEL_HEIGHT - 1
+STAT_PANEL_WIDTH = 20
+
+MSG_PANEL_HEIGHT = 10
+MSG_PANEL_X = STAT_PANEL_WIDTH + 2
+MSG_PANEL_Y = SCREEN_HEIGHT - MSG_PANEL_HEIGHT
+MSG_PANEL_WIDTH = SCREEN_WIDTH - STAT_PANEL_WIDTH - 2
+
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
 ROOM_MAX_SIZE = 8
 ROOM_MIN_SIZE = 3
-MAX_ROOMS = 38
+MAX_ROOMS = 36
+
+# monster qty
+MONSTER_COUNT = 55
+MONSTER_TOUGH = 0.34
+MONSTER_WEAK = 0.66
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
@@ -103,11 +109,11 @@ START_DEFENSE = 2
 START_VISION = 4
 
 # worst stat levels
-MIN_POWER = 3
+MIN_POWER = 1
 MIN_DEFENSE = 0
-MAX_SPEED = 2.0 # real stat
-MIN_SPEED_DSP = 0.5 # inverted for display
-MIN_VISION = 2
+MAX_SPEED = 3.0 # real stat
+MIN_SPEED_DSP = 0.334 # inverted for display
+MIN_VISION = 1
 
 # best stat levels
 MIN_SPEED = 0.34
@@ -127,7 +133,7 @@ BARMIN_VIS = MIN_VISION
 
 # consumable body part names
 PART_POWER = 'Muscles'
-PART_DEF = 'Torso'
+PART_DEFENSE = 'Torso'
 PART_SPEED = 'Legs'
 PART_FOV = 'Eyes'
 

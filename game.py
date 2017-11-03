@@ -288,7 +288,7 @@ class Game:
         self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
                         fullscreen=False)
         self.map_console = tdl.Console(constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT)
-        self.message_panel = tdl.Console(constants.SCREEN_WIDTH, constants.PANEL_HEIGHT)
+        self.message_panel = tdl.Console(constants.SCREEN_WIDTH, constants.MSG_PANEL_HEIGHT)
         
         tdl.setFPS(constants.LIMIT_FPS)
         
@@ -298,11 +298,13 @@ class Game:
         
     ### MESSAGES LOG ###
     def message(self, new_msg, color = colors.white):
+        #add turn counter
+        tcounter = ' [Turn ' + str(round(self.dungeon.turn,1)) + ']'
         #split the message if necessary, among multiple lines
-        new_msg_lines = textwrap.wrap(new_msg, constants.MSG_WIDTH)
+        new_msg_lines = textwrap.wrap(new_msg+tcounter, constants.MSG_PANEL_WIDTH)
         height = len(new_msg_lines)
         
-        remove = (len(self.messages) + height) - constants.MSG_HEIGHT
+        remove = (len(self.messages) + height) - constants.MSG_PANEL_HEIGHT - 1
         while remove > 0:
             self.messages.pop()
             remove -= 1
@@ -751,7 +753,7 @@ class Game:
         self.render_stats()
      
         #blit the contents of "self.message_panel" to the self.root_console console
-        self.root_console.blit(self.message_panel, 0, constants.PANEL_Y, constants.SCREEN_WIDTH, constants.PANEL_HEIGHT, 0, 0)
+        self.root_console.blit(self.message_panel, 0, constants.MSG_PANEL_Y, constants.SCREEN_WIDTH, constants.MSG_PANEL_HEIGHT, 0, 0)
         
         
     def render_messages(self):
@@ -760,14 +762,14 @@ class Game:
         #print the game messages, one line at a time
         y = 1
         for (line, color) in self.messages:
-            c = colors.mutate_color(color, colors.darkest_grey, (y / constants.PANEL_HEIGHT))
-            self.message_panel.draw_str(constants.MSG_X, y, line, bg=None, fg=c)
+            c = colors.mutate_color(color, colors.darkest_grey, (y / constants.MSG_PANEL_HEIGHT))
+            self.message_panel.draw_str(constants.MSG_PANEL_X, y, line, bg=None, fg=c)
             y += 1
     
     
     def render_stats(self):
         #show player's hp bar
-        self.render_bar(1, 1, constants.BAR_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
+        self.render_bar(1, 1, constants.STAT_PANEL_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
             colors.light_red, colors.darker_red)
         
         # show character stats
