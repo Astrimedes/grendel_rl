@@ -5,7 +5,6 @@
 import constants
 import game
 
-
 ### Start script ###
 # Game start
 if __name__ == '__main__':

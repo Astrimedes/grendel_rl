@@ -19,6 +19,9 @@ import numpy as np
 
 import math
 
+import time
+from datetime import date
+
 from barbarian_names import barb_name
 
 import logging
@@ -458,6 +461,7 @@ class Dungeon:
         
         # keeps track of turns passed (use monster/player speed to check when to act)
         self.turn = 0
+        self.calc_date_time() #set initial time values
         
         self.combatants = []
         
@@ -477,7 +481,11 @@ class Dungeon:
         # self.inventory.append(LightningScroll().item)
         # self.inventory.append(FireballScroll().item)
         # self.inventory.append(Weapon())
-            
+        
+    def count_enemies(self):
+        fighters = [obj.fighter for obj in self.objects if obj.fighter]
+        self.enemies_left = len(fighters) - 1 # subtract player
+        
     ### MAP CREATION ###
     def make_map(self):
     
@@ -553,11 +561,6 @@ class Dungeon:
          
                 #only place it if the tile is not blocked
                 if not self.is_blocked(x, y):
-                
-                    # check for random 'junk' items
-                    if randint(0,10) == 0:
-                        thing = GameObject(self, x, y, 'A', 'altar', colors.white, blocks=False)
-                        self.objects.append(thing)
                 
                     self.enemies_left += 1
                     mon_left -= 1
@@ -762,20 +765,32 @@ class Dungeon:
         self.game.message('You wait.')
         
     def ai_act(self, turns_passed):
+        # advance dungeon 'clock'
+        self.turn += turns_passed
+        logging.info('%s turns passed in dungeon', self.turn)
+        
+        # date / time strings from turn count
+        self.calc_date_time()
+    
         # determine which monsters player is near or in combat with (ai uses in decisions)
         self.combatants = []
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
         for ftr in fighters:
             if ftr != self.player.fighter and self.distance_to(_dungeon.player, ftr.owner) < 3:
                 self.combatants.append(ftr)
-    
-        # advance dungeon 'clock'
-        self.turn += turns_passed
-        logging.info('%s turns passed in dungeon', self.turn)
+        
         # ai acts based on current turns passed
         for ftr in fighters:
             # ai will take turns, player will only update last_turn counter
             ftr.pass_time()
+            
+    def calc_date_time(self):
+        # time of day (dungeon turn)
+        seconds = float(constants.START_TIME + round(self.turn * 6.0))
+        stime = time.gmtime(seconds)
+        # day, month, year (year is offset from 1970 in order to use normal date-time structs)
+        self.date_string = time.strftime("%a, %d %b", stime) + ', ' + str(int(stime[0] - constants.TIME_SUBTRACT_YEARS))
+        self.time_string = time.strftime("%I:%M:%S %p", stime)
  
     def send_to_back(self, game_obj):
         #make this object be drawn first, so all others appear above it if 

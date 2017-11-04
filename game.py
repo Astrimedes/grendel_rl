@@ -30,10 +30,14 @@ class Game:
     def __init__(self):
         self.map_console = None
         self.root_console = None
+        self.message_panel = None
+        self.status_panel = None        
+        
         self.state = None
         self.dungeon = None
         self.messages = []
-        self.message_panel = None
+        self.timestamps = []
+        
         self.mouse_coord = None
         
         self.total_time = time.process_time()
@@ -62,6 +66,7 @@ class Game:
                 savefile['player_index'] = self.dungeon.objects.index(self.dungeon.player)  #index of player in objects list
                 savefile['inventory'] = self.dungeon.inventory
                 savefile['messages'] = self.messages
+                savefile['timestamps'] = self.timestamps
                 savefile['turn'] = self.dungeon.turn
         else:
             logging.info("Dead: clearing save file...")
@@ -83,6 +88,8 @@ class Game:
     def load_game(self):
         #open the previously saved shelve and load the game data
         
+        self.root_console.clear()
+        
         if self.dungeon:
             del self.dungeon
         
@@ -98,6 +105,7 @@ class Game:
                     self.dungeon.player = self.dungeon.objects[savefile['player_index']]  #get index of player in objects list and access it
                     self.dungeon.inventory = savefile['inventory']
                     self.messages = savefile['messages']
+                    self.timestamps = savefile['timestamps']
                     self.dungeon.turn = savefile['turn']
                     if self.dungeon.player.fighter.hp > 0:
                         self.state = constants.STATE_PLAYING
@@ -107,6 +115,12 @@ class Game:
                     # set dungeon reference
                     for obj in self.dungeon.objects:
                         obj.dungeon = self.dungeon
+                        
+                    # fix time
+                    self.dungeon.calc_date_time()
+                    
+                    # fix enemy count
+                    self.dungeon.count_enemies()
                     
                     logging.debug('After Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
                     return True
@@ -120,8 +134,10 @@ class Game:
         
         if self.dungeon:
             self.map_console.clear()
-            tdl.flush()
             del self.dungeon
+            
+        self.root_console.clear()
+        tdl.flush()
             
         self.fov_recompute = True
         
@@ -140,7 +156,7 @@ class Game:
      
         #a warm welcoming message!
         #self.message('You sneak into Heorot, home of Beowulf and his men...', colors.red)
-        self.message('Their music and merriment ends tonight - they all must die!', colors.red)
+        self.message('Their music and merriment ends tonight - they all must die!  And then some more text happened.', colors.red)
      
     ### MAIN LOOP ###
     def play_game(self):
@@ -217,8 +233,20 @@ class Game:
     def main_menu(self):
         
         img = tcod.image_load(constants.MENU_BACKGROUND)
-        x = round((((constants.SCREEN_WIDTH * constants.TILE_SIZE)/2) - img.width) / 2 / constants.TILE_SIZE)
-        y = 0
+        img_x = round((((constants.SCREEN_WIDTH * constants.TILE_SIZE)/2) - img.width) / 2 / constants.TILE_SIZE)
+        img_y = 0
+        
+        title = constants.TITLE
+        
+        title_console = tdl.Console(len(title)+2, 3)
+        
+        title_center = (title_console.width - len(title)) // 2
+        
+        author = 'By ' + constants.AUTHOR
+        author_center = (title_console.width - len(author)) // 2
+        
+        tconsole_x = (constants.SCREEN_WIDTH - title_console.width) // 2
+        tconsole_y = 4
      
         while not tdl.event.is_window_closed():
         
@@ -227,16 +255,12 @@ class Game:
             #show the title image
             
             #img.blit(self.root_console, xcenter, ycenter, tcod.BKGND_SET, 0.25, 0.25, 0)
-            img.blit_2x(self.root_console, x, y)
+            img.blit_2x(self.root_console, img_x, img_y)
             
             #show the game's title, and some credits!
-            title = constants.TITLE
-            center = (constants.SCREEN_WIDTH - len(title)) // 2
-            self.root_console.draw_str(center, constants.SCREEN_HEIGHT//2-4, title, bg=None, fg=colors.dark_azure)
-            
-            title = 'By ' + constants.AUTHOR
-            center = (constants.SCREEN_WIDTH - len(title)) // 2
-            self.root_console.draw_str(center, constants.SCREEN_HEIGHT-2, 'By Astrimedes', bg=None, fg=colors.dark_azure)
+            title_console.draw_str(title_center, 0, title, bg=None, fg=colors.azure)
+            title_console.draw_str(author_center, 2, author, bg=None, fg=colors.dark_azure)
+            self.root_console.blit(title_console, tconsole_x, tconsole_y, title_console.width, title_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
             
             tdl.flush()
      
@@ -260,6 +284,7 @@ class Game:
                 if self.load_game():
                     self.play_game()
                 else:
+                    self.root_console.clear()
                     c = self.menu('No saved game to load!', ['Start new game', 'Quit'], 24)
                     logging.debug('Chose %s', c)
                     if c == 0:
@@ -278,6 +303,7 @@ class Game:
         self.map_console.clear()
         self.root_console.clear()
         self.message_panel.clear()
+        self.status_panel.clear()
         self.fov_recompute = True
 
     ### LAUNCH GAME ###
@@ -288,7 +314,8 @@ class Game:
         self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
                         fullscreen=False)
         self.map_console = tdl.Console(constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT)
-        self.message_panel = tdl.Console(constants.SCREEN_WIDTH, constants.MSG_PANEL_HEIGHT)
+        self.message_panel = tdl.Console(constants.MSG_PANEL_WIDTH, constants.MSG_PANEL_HEIGHT)
+        self.status_panel = tdl.Console(constants.STAT_PANEL_WIDTH, constants.STAT_PANEL_HEIGHT)
         
         tdl.setFPS(constants.LIMIT_FPS)
         
@@ -298,18 +325,29 @@ class Game:
         
     ### MESSAGES LOG ###
     def message(self, new_msg, color = colors.white):
-        #add turn counter
-        tcounter = ' [Turn ' + str(round(self.dungeon.turn,1)) + ']'
+        #timestamps list
+        tstamp = '[' + self.dungeon.time_string + '] '
+        stamplen = len(tstamp)
+        
         #split the message if necessary, among multiple lines
-        new_msg_lines = textwrap.wrap(new_msg+tcounter, constants.MSG_PANEL_WIDTH)
+        # wrap text without timestamp, account for timestamp spacing...
+        new_msg_lines = textwrap.wrap(new_msg, constants.MSG_PANEL_WIDTH - stamplen)
         height = len(new_msg_lines)
         
-        remove = (len(self.messages) + height) - constants.MSG_PANEL_HEIGHT - 1
+        #remove entries if necessary
+        remove = (len(self.messages) + height) - (constants.MSG_PANEL_HEIGHT - 1)
         while remove > 0:
+            self.timestamps.pop()
             self.messages.pop()
             remove -= 1
         
+        #add new entries to top
         for i in range(height):
+            if i == (height-1):
+                stamp = tstamp
+            else:
+                stamp = ' ' * stamplen
+            self.timestamps.insert(0, stamp)
             self.messages.insert(0, (new_msg_lines[height-i-1],color))
             
             
@@ -502,14 +540,15 @@ class Game:
  
     def get_obj_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
-        x = self.mouse_coord[0] + self.camera_x
-        y = self.mouse_coord[1] + self.camera_y
+        x = self.mouse_coord[0] - constants.CAMERA_PANEL_X + self.camera_x
+        y = self.mouse_coord[1] - constants.CAMERA_PANEL_Y  + self.camera_y
         return self.get_obj_names_at(x, y)
         
     def get_obj_names_at(self, x, y):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
-            
+        if names:
+            logging.info(str(names))
         names = ', '.join(names)  #join the names, separated by commas
         return names
         
@@ -677,21 +716,21 @@ class Game:
         turn_action.turns_used = self.dungeon.player_move_or_attack(turn_action.move_x, turn_action.move_y)
     
     ### RENDERING ###
-    def render_bar(self, x, y, total_width, name, value, maximum, bar_color, back_color):
+    def render_bar(self, x, y, total_width, name, value, minimum, maximum, bar_color, back_color):
         #render a bar (HP, experience, etc). first calculate the width of the bar
-        bar_width = int(float(value) / maximum * total_width)
+        bar_width = int((float(value)-minimum) / maximum * total_width)
      
         #render the background first
-        self.message_panel.draw_rect(x, y, total_width, 1, None, bg=back_color)
+        self.status_panel.draw_rect(x, y, total_width, 1, None, bg=back_color)
      
         #now render the bar on top
         if bar_width > 0:
-            self.message_panel.draw_rect(x, y, bar_width, 1, None, bg=bar_color)
+            self.status_panel.draw_rect(x, y, bar_width, 1, None, bg=bar_color)
      
         #finally, some centered text with the values
         text = name + ': ' + str(value) + '/' + str(maximum)
         x_centered = x + (total_width-len(text))//2
-        self.message_panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
+        self.status_panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
      
     def render_all(self):
         logging.debug('render_all')
@@ -738,78 +777,115 @@ class Game:
             self.draw_obj(obj)
         
         #blit the contents of "self.map_console" to the self.root_console console and present it
-        self.root_console.blit(self.map_console, 0, 0, constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT, 0, 0)
+        self.root_console.blit(self.map_console, constants.CAMERA_PANEL_X, constants.CAMERA_PANEL_Y, constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT, 0, 0)
         
-        # clear map_console before next update and flush
+        # clear map_console before next update
         self.map_console.clear()
      
-        #prepare to render the GUI self.message_panel
+        #prepare to render the messages
         self.render_messages()
-            
-        #display names of objects under the mouse
-        self.message_panel.draw_str(1, 0, self.get_obj_names_under_mouse(), bg=None, fg=colors.light_gray)
-     
-        # write hp and stats to message_panel
-        self.render_stats()
-     
+        
         #blit the contents of "self.message_panel" to the self.root_console console
-        self.root_console.blit(self.message_panel, 0, constants.MSG_PANEL_Y, constants.SCREEN_WIDTH, constants.MSG_PANEL_HEIGHT, 0, 0)
+        self.root_console.blit(self.message_panel, constants.MSG_PANEL_X, constants.MSG_PANEL_Y, constants.MSG_PANEL_WIDTH, constants.MSG_PANEL_HEIGHT, 0, 0)
+     
+        # prepare to render status and hp
+        self.render_stats()
+        
+        #blit the contents of status_panel to root console
+        self.root_console.blit(self.status_panel, constants.STAT_PANEL_X, constants.STAT_PANEL_Y, constants.STAT_PANEL_WIDTH, constants.STAT_PANEL_HEIGHT, 0, 0)
         
         
     def render_messages(self):
         self.message_panel.clear(fg=colors.white, bg=colors.black)
-     
+        
+        #display names of objects under the mouse
+        msg = self.get_obj_names_under_mouse()
+        if len(msg) > 1:
+            self.message_panel.draw_str(0, 0, 'Looking at: ' + msg, bg=None, fg=colors.light_yellow)
+         
         #print the game messages, one line at a time
+        x = 0
         y = 1
-        for (line, color) in self.messages:
-            c = colors.mutate_color(color, colors.darkest_grey, (y / constants.MSG_PANEL_HEIGHT))
-            self.message_panel.draw_str(constants.MSG_PANEL_X, y, line, bg=None, fg=c)
+        count = max(len(self.messages),5)
+        for i, msg in enumerate(self.messages):
+            #get iteration values
+            (line, color) = msg
+            #calc darkness ratio
+            darkness = (y / count)
+            
+            #draw timestamp
+            c = colors.mutate_color(colors.white, colors.darkest_grey, darkness)
+            self.message_panel.draw_str(x, y, self.timestamps[i], fg=c)
+            
+            #draw message line
+            c = colors.mutate_color(color, colors.darkest_grey, darkness)
+            self.message_panel.draw_str(x+len(self.timestamps[i]), y, line, bg=None, fg=c)
+            
             y += 1
     
     
     def render_stats(self):
+    
+        self.status_panel.clear()
+    
+        x = 0
+        y = constants.STAT_PANEL_HEIGHT - 12
+    
         #show player's hp bar
-        self.render_bar(1, 1, constants.STAT_PANEL_WIDTH, 'HP', self.dungeon.player.fighter.hp, self.dungeon.player.fighter.max_hp,
+        self.render_bar(x, y, constants.STAT_PANEL_WIDTH, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
             colors.light_red, colors.darker_red)
         
         # show character stats
         pfighter = self.dungeon.player.fighter
         
         # Strength
+        y += 2
         stat = round(pfighter.power,1)
         diff = round(pfighter.power - constants.START_POWER,1)
         note, c = make_mod_text_color(diff)
-        stat_msg = 'Strength: ' + str(stat) + ' '
-        self.message_panel.draw_str(1, 3, stat_msg, bg=None, fg=colors.white)
-        self.message_panel.draw_str(1+len(stat_msg), 3,  note, bg=None, fg=c)
+        stat_msg = 'Str: ' + str(stat) + ' '
+        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
         
         # Toughness
+        y += 1
         stat = round(pfighter.defense, 1)
         diff = round(pfighter.defense - constants.START_DEFENSE,1)
         note, c = make_mod_text_color(diff)
-        stat_msg = 'Toughness: ' + str(stat) + ' '
-        self.message_panel.draw_str(1, 4, stat_msg, bg=None, fg=colors.white)
-        self.message_panel.draw_str(1+len(stat_msg), 4,  note, bg=None, fg=c)
+        stat_msg = 'Tough: ' + str(stat) + ' '
+        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
         
         # Speed (inverse!)
         # calc display for speed: how many tiles per 1 turn?
+        y += 1
         stat =  round(round(1.0 + (1.0 - pfighter.move_speed()),2) * 100.0)
         diff =  stat - round(round(1.0 + (1.0 - constants.START_SPEED),2) * 100)
         note, c = make_mod_text_color(diff)
         stat_msg = 'Speed: ' + str(stat) + '% '
-        self.message_panel.draw_str(1, 5, stat_msg, bg=None, fg=colors.white)
-        self.message_panel.draw_str(1+len(stat_msg), 5, note, bg=None, fg=c)
+        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
         
         # Vision
+        y += 1
         stat = round(self.dungeon.player.fov,1)
         diff = round(self.dungeon.player.fov - constants.START_VISION,1)
         note, c = make_mod_text_color(diff)
         stat_msg = 'Vision: ' + str(stat) + ' '
-        self.message_panel.draw_str(1, 6, stat_msg, bg=None, fg=colors.white)
-        self.message_panel.draw_str(1+len(stat_msg), 6, note, bg=None, fg=c)
+        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
+        
+        # time of day (dungeon turn)
+        # day, month, year
+        y += 2
+        self.status_panel.draw_str(x, y, self.dungeon.date_string, bg=None, fg=colors.light_grey)
+        # time
+        y += 1
+        self.status_panel.draw_str(x, y, self.dungeon.time_string, bg=None, fg=colors.light_grey)
         
         # enemies left!
-        self.message_panel.draw_str(1, 8, 'Enemies: ' + str(self.dungeon.enemies_left), bg=None, fg=colors.light_flame)
+        y += 2
+        self.status_panel.draw_str(x, y, 'Enemies: ' + str(self.dungeon.enemies_left), bg=None, fg=colors.light_flame)
         
         
     def clear_obj_render(self):
