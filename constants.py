@@ -8,7 +8,7 @@ TILE_SIZE = 16
 
 #size of the map
 MAP_WIDTH = 60
-MAP_HEIGHT = 60
+MAP_HEIGHT = 40
 
 # sizes and coordinates relevant for the GUI
 # messages panel
@@ -39,8 +39,8 @@ ROOM_MIN_SIZE = 3
 MAX_ROOMS = 36
 
 # monster qty
-MONSTER_COUNT = 20
-MONSTER_TOUGH = 0.19
+MONSTER_COUNT = 26
+MONSTER_TOUGH = 0.34
 MONSTER_WEAK = 1.0 - MONSTER_TOUGH
 
 #monster pathing
@@ -72,6 +72,7 @@ MENU_BACKGROUND = 'grendel.png'
 #state names
 STATE_PLAYING = 'playing'
 STATE_DEAD = 'dead'
+STATE_WON = 'won'
 STATE_EXIT = 'exit'
 
 # map colors
@@ -82,7 +83,8 @@ color_light_ground = colors.light_sepia
 color_light_wall = colors.sepia
 
 #ui colors
-color_frame = colors.desaturated_azure
+# color_frame = colors.desaturated_azure
+color_frame = (10,50,25)
 
 color_target = colors.light_orange
 

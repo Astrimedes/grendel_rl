@@ -701,14 +701,21 @@ class Game:
             turn_action.turns_used = self.dungeon.player.fighter.speed
             
     def do_pickup(self, turn_action):
-        #pick up an item
-        picked_up = False
-        for obj in self.dungeon.objects:  #look for an item in the player's tile
+        #pick up items here
+        found = []
+        for obj in self.dungeon.objects:  #look for any items in player's tile
             if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
-                self.dungeon.pick_up(obj.item)
-                turn_action.turns_used = self.dungeon.player.fighter.speed
-                picked_up = True
-        return picked_up
+                logging.info('Pickup SUCCESS: %s at %s', obj.name, (obj.x, obj.y))
+                found.append(obj)
+                
+        if len(found) < 1:
+            return False
+                
+        turn_action.turns_used = self.dungeon.player.fighter.speed
+        for obj in found:
+            self.dungeon.pick_up(obj.item)
+                
+        return True
                 
     def do_inventory_use(self, turn_action):
         chosen_item = self.inventory_menu()
@@ -842,10 +849,12 @@ class Game:
         x = 1
         y = 2
         
+        tcolor = colors.green
+        
         # time of day (dungeon turn)
         title = 'Time'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
         y += 1
         # day, month, year
         self.status_panel.draw_str(x, y, self.dungeon.date_string, bg=None, fg=colors.light_grey)
@@ -860,7 +869,7 @@ class Game:
         y += 4
         title = 'Inventory'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
         y += 1
         title = '(press i to use)'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
@@ -877,11 +886,11 @@ class Game:
         y += 4
         title = 'Grendel'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
         #show player's hp bar
         y += 1
         self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
-            colors.light_red, colors.darker_red)
+            self.dungeon.player.fighter.get_health_color(), colors.darkest_red)
         
         # show character stats
         pfighter = self.dungeon.player.fighter
@@ -927,7 +936,7 @@ class Game:
         y = constants.STAT_PANEL_HEIGHT - 4
         title = 'Enemies Left'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
         y += 1
         title = str(self.dungeon.enemies_left)
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2

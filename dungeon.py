@@ -120,7 +120,7 @@ class GameObject:
         if self.item:  #let the Item component know who owns it
             self.item.owner = self
             
-class HealingPotion(GameObject):
+class Heart(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal, inv_description='(heals damage)')
         GameObject.__init__(self, _dungeon, x, y, 'o', 'Heart',
@@ -128,29 +128,29 @@ class HealingPotion(GameObject):
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
                  
-class ToughFlesh(GameObject):
+class Muscle(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_power, inv_description='(+Strength,-Speed)')
-        GameObject.__init__(self, _dungeon, x, y, 'x', constants.PART_POWER,
-            colors.dark_sepia, item=itm)
+        GameObject.__init__(self, _dungeon, x, y, '&', constants.PART_POWER,
+            colors.light_flame, item=itm)
             
-class StringyFlesh(GameObject):
+class Legs(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
-        GameObject.__init__(self, _dungeon, x, y, '~', constants.PART_SPEED,
+        GameObject.__init__(self, _dungeon, x, y, 'v', constants.PART_SPEED,
             colors.light_flame, item=itm)
             
 class Eyes(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_vision, inv_description='(+Vision,-Toughness)')
         GameObject.__init__(self, _dungeon, x, y, '*', constants.PART_FOV,
-            colors.light_blue, item=itm)
+            colors.light_flame, item=itm)
             
-class Bones(GameObject):
+class Torso(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_defense, inv_description='(+Toughness,-Vision)')
-        GameObject.__init__(self, _dungeon, x, y, '-', constants.PART_DEFENSE,
-            colors.white, item=itm)
+        GameObject.__init__(self, _dungeon, x, y, '#', constants.PART_DEFENSE,
+            colors.light_flame, item=itm)
        
             
 class LightningScroll(GameObject):
@@ -207,16 +207,19 @@ class Fighter:
             logging.debug('%s - No ai - set last_turn = %s', self.owner.name, self.last_turn)
             
     def set_health_color(self):
-        
         # set color according to health
         if not self.died:
-            fraction = (self.hp / self.max_hp)
-            self.owner.color = constants.THRESH_COLORS[0]
-            for idx in range(len(constants.THRESH_COLORS)-1, 0, -1):
-                if fraction <= constants.THRESH_HEALTH[idx]:
-                    self.owner.color = constants.THRESH_COLORS[idx]
-                    logging.debug('set_health_color %s idx used, fraction %s', idx, fraction)
-                    break
+            self.owner.color = self.get_health_color()
+                    
+    def get_health_color(self):
+        fraction = (self.hp / self.max_hp)
+        c = constants.THRESH_COLORS[0]
+        for idx in range(len(constants.THRESH_COLORS)-1, 0, -1):
+            if fraction <= constants.THRESH_HEALTH[idx]:
+                c = constants.THRESH_COLORS[idx]
+                break
+        return c
+        
  
     def take_damage(self, attacker_name, attack_verb, weapon_name, attack_color, damage):
         if damage > 0 and self.hp > 0:
@@ -288,7 +291,7 @@ class Player(GameObject):
         fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
                                     speed=constants.START_SPEED, death_function=self.death)
         
-        weapon = Weapon(min_dmg=3, max_dmg=8, speed=constants.START_ATK_SPEED, 
+        weapon = Weapon(min_dmg=4, max_dmg=6, speed=constants.START_ATK_SPEED, 
         attack_names=['claws', 'great claws', 'bloody claws'], 
         attack_verbs=['rake', 'gouge', 'tear', 'impale'], 
         map_char = 'w', map_color = colors.white)
@@ -316,8 +319,8 @@ class Player(GameObject):
         self.char = '%'
         self.color = constants.color_dead
             
-class Barbarian(GameObject):
-    #Barbarian monster GameObject
+class Scout(GameObject):
+    #Scout monster GameObject
     def __init__(self, dungeon, x, y):
         barb_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             vision_range=constants.FOV_RADIUS_BAD)
@@ -377,8 +380,8 @@ class Barbarian(GameObject):
         
         
                  
-class BarbarianTough(Barbarian):
-    #BarbarianTough monster GameObject
+class Warrior(Scout):
+    #Warrior monster GameObject
     def __init__(self, dungeon, x, y):
         bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
@@ -400,7 +403,7 @@ class BarbarianTough(Barbarian):
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
                  
-class Beowulf(Barbarian):
+class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
         bt_ai = BossMonster(dungeon)
@@ -421,7 +424,23 @@ class Beowulf(Barbarian):
         GameObject.__init__(self, dungeon, x, y, 'B', 'Beowulf the Mighty', colors.white, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
-            
+                 
+    def death(self):    
+        self.dungeon.game.message('Beowulf roars one last time as the blood drains from his body and he falls down dead.', colors.orange)
+        self.dungeon.game.message('Their hero is dead!  Your war is won.', colors.green)
+        
+        self.dungeon.game.state = constants.STATE_WON
+        
+        # transform to corpse
+        self.name = 'corpse of ' + self.name
+        self.char = '%'
+        self.color = constants.color_dead
+        self.blocks = False
+        self.fighter = None
+        self.ai = None
+        
+        # sort this tile properly
+        _dungeon.game.sort_obj_at(self.x, self.y)
         
         
 class Weapon(Item):
@@ -518,12 +537,12 @@ class Dungeon:
         self.objects.append(self.player)
         
         # give the player some items
-        # self.inventory.append(ToughFlesh().item)
-        # self.inventory.append(HealingPotion().item)
-        # self.inventory.append(StringyFlesh().item)
-        # self.inventory.append(HealingPotion().item)
-        # self.inventory.append(ToughFlesh().item)
-        # self.inventory.append(StringyFlesh().item)
+        # self.inventory.append(Muscle().item)
+        # self.inventory.append(Heart().item)
+        # self.inventory.append(Legs().item)
+        # self.inventory.append(Heart().item)
+        # self.inventory.append(Muscle().item)
+        # self.inventory.append(Legs().item)
         
     def create_Beowulf(self):
         # select a position near the opposite edge of the map from player
@@ -622,6 +641,7 @@ class Dungeon:
                 
     def place_objects_gen(self, room, num_monsters, num_items):        
         # room = (x, y, w, h)
+        num_items = max(num_monsters, num_items)
         tries = 0
         mon_left = num_monsters
         for i in range(num_monsters):
@@ -642,45 +662,30 @@ class Dungeon:
                     tough_monster = randfloat(0, 1) <= constants.MONSTER_TOUGH
                     if not(tough_monster):  #% chance of getting a chump
                         #create a chump
-                        monster = Barbarian(self, x, y)
+                        monster = Scout(self, x, y)
                     else:
                         #create a tough guy
-                        monster = BarbarianTough(self, x, y)
+                        monster = Warrior(self, x, y)
                     
                         
                     # give it an item to drop on death if there are items left
                     if num_items > 0:
                         num_items = num_items - 1
-                        itmtype = randint(0,100)
-                        if tough_monster:
-                            if itmtype < 10:
-                                itm = StringyFlesh(-1, -1)
-                            elif itmtype < 20:
-                                itm = Eyes(-1, -1)
-                            elif itmtype < 60:
-                                itm = ToughFlesh(-1, -1)
-                            else:
-                                itm = Bones(-1, -1)
+                        itmtype = randint(0,4)
+                        if itmtype == 0:
+                                itm = Legs(-1, -1)
+                        elif itmtype == 1:
+                            itm = Eyes(-1, -1)
+                        elif itmtype == 2:
+                            itm = Muscle(-1, -1)
+                        elif itmtype == 3:
+                            itm = Torso(-1, -1)
                         else:
-                            if itmtype < 10:
-                                itm = ToughFlesh(-1, -1)
-                            elif itmtype < 20:
-                                itm = Bones(-1, -1)
-                            elif itmtype < 60:
-                                itm = StringyFlesh(-1, -1)
-                            else:
-                                itm = Eyes(-1, -1)
+                            itm = Heart(-1, -1)
                                 
                         # add item to monster
                         monster.drop_objects.append(itm)
                         
-                    # check for healing potion
-                    if randint(0,3) == 0:
-                        # add item to monster
-                        monster.drop_objects.append(HealingPotion(-1, -1))
-                        
-                        
-         
                     # add monster to dungeon
                     self.objects.append(monster)
 
@@ -887,7 +892,6 @@ class Dungeon:
         self.objects.insert(0, game_obj)
     
     def pick_up(self, item):
-        logging.info('pick up attempt')
         #add to the player's inventory and remove from the map
         if len(self.inventory) >= 26:
             self.game.message('Your inventory is full, cannot pick up ' + 
