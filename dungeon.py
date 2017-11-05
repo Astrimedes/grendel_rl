@@ -87,10 +87,10 @@ class Item:
     def __gt__(self, other):
         return self.name() > other.name()
         
-    def __lte__(self, other):
+    def __le__(self, other):
         return self.__lt(other) or self.name() == other.name()
         
-    def __gte__(self, other):
+    def __ge__(self, other):
         return self.__gt(other) or self.name() == other.name()
  
 class GameObject:
@@ -370,6 +370,11 @@ class Barbarian(GameObject):
         # sort this tile properly
         _dungeon.game.sort_obj_at(self.x, self.y)
         
+        # check for 'boss summon'
+        if self.dungeon.enemies_left < 1:
+            # summon beowulf!
+            self.dungeon.create_Beowulf()
+        
         
                  
 class BarbarianTough(Barbarian):
@@ -393,6 +398,29 @@ class BarbarianTough(Barbarian):
         
         GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
+                 
+                 
+class Beowulf(Barbarian):
+    #Boss monster GameObject
+    def __init__(self, dungeon, x, y):
+        bt_ai = BossMonster(dungeon)
+        
+        bt_fighter = Fighter(hp=50, defense=4, power=10,
+            speed=1.25, death_function=self.death)
+        
+        weapon = Weapon(min_dmg=4, max_dmg=8, speed=-0.2,
+        attack_names=['battle axe', 'mighty axe'], 
+        attack_verbs=['cleaves', 'chops', 'carves'], 
+        map_char = 'w', map_color = colors.white)
+        
+        bt_fighter.weapon = weapon
+        
+        # objects that drop upon death
+        self.drop_objects = []
+        
+        GameObject.__init__(self, dungeon, x, y, 'B', 'Beowulf the Mighty', colors.white, blocks=True, 
+                 fighter=bt_fighter, ai=bt_ai, item=None)
+                 
             
         
         
@@ -496,6 +524,36 @@ class Dungeon:
         # self.inventory.append(HealingPotion().item)
         # self.inventory.append(ToughFlesh().item)
         # self.inventory.append(StringyFlesh().item)
+        
+    def create_Beowulf(self):
+        # select a position near the opposite edge of the map from player
+        xrange = (constants.MAP_WIDTH // 10)
+        if self.player.x > constants.MAP_WIDTH // 2:
+            xmin = 0
+            xmax = xrange + 1
+        else:
+            xmax = constants.MAP_WIDTH
+            xmin = xmax - xrange - 1
+        
+        added = False
+        while not(added):
+            for y in range(constants.MAP_HEIGHT):
+                for x in range(xmin, xmax):
+                    if not self.is_blocked(x,y):
+                        # place beowulf!
+                        boss = Beowulf(self, x, y)
+                        self.objects.append(boss)
+                        # announce!
+                        self.game.message("From across the way you hear: I will avenge my kin, foul beast!", colors.light_violet)
+                        self.game.message("Your mightiest enemy, Beowulf has arrived!", colors.yellow)
+                        added = True
+                        break
+                if added:
+                    break
+                    
+        
+        
+        
     def count_enemies(self):
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
         self.enemies_left = len(fighters) - 1 # subtract player
@@ -547,18 +605,18 @@ class Dungeon:
                     continue
             
                 # qty of monsters can depend on room size
-                # max_monsters = round((new_room[2] * new_room[3])/3.0)
-                # monsters = randint(0, min(monsters_left, max_monsters))
-                # monsters_left -= monsters
+                #max_monsters = round((new_room[2] * new_room[3])/3.0)
+                max_monsters = 1
+                monsters = randint(0, min(monsters_left, max_monsters))
+                monsters_left -= monsters
             
                 # item qty depends on monster count
-                monsters = 1
+                #monsters = 1
                 items = randint(0, min(items_left, monsters))
                 items_left -= items
                 
                 # add them!
-                self.place_objects_gen(new_room, monsters, items) # 1 monster
-                monsters_left -= 1
+                self.place_objects_gen(new_room, monsters, items)
                 
 
                 
@@ -616,10 +674,10 @@ class Dungeon:
                         # add item to monster
                         monster.drop_objects.append(itm)
                         
-                        # check for healing potion
-                        if randint(0,4) == 0:
-                            # add item to monster
-                            monster.drop_objects.append(HealingPotion(-1, -1))
+                    # check for healing potion
+                    if randint(0,3) == 0:
+                        # add item to monster
+                        monster.drop_objects.append(HealingPotion(-1, -1))
                         
                         
          
@@ -942,7 +1000,8 @@ class BasicMonster:
     
         if not(self.last_action == BasicMonster.FLEE):
             self.last_action = BasicMonster.FLEE
-            _dungeon.game.message(self.owner.name + ' tries to flee!', colors.orange)
+            if (self.owner.x, self.owner.y) in _dungeon.visible_tiles:
+                _dungeon.game.message(self.owner.name + ' tries to flee!', colors.orange)
                 
         # run opposite direction of player
         direction = _dungeon.get_direction(self.owner, _dungeon.player.x, _dungeon.player.y)
@@ -1056,15 +1115,62 @@ class BasicMonster:
             
         
         
-class LeaderMonster(BasicMonster):
-    #AI for a 'leader' monster (other monsters try to stay near them)
-    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION, 
-        flee_health=0.2, flee_chance=0.1, curses=['The vile beast is here!','The thing from the moors! Die, monster!', 'Kill the beast!']):
+class BossMonster(BasicMonster):
+    #AI for boss monster
+    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
+        flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
         
         BasicMonster.__init__(self, dungeon, fov_algo, vision_range, 
-            flee_health, flee_chance, ['Kill the beast!','Destroy the demon!','The demon returns!'])
-        
+            flee_health, flee_chance, curses)
+            
         self.leader = True
+        
+    def take_turn(self):
+        #a basic monster takes its turn.
+        monster = self.owner
+        
+        # monster pathfinding
+        self.pdistance = self.dungeon.distance_to(monster, self.dungeon.player)
+        
+        logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
+        
+        # ignore if monster too far away
+        if self.pdistance > constants.DEFAULT_PATHSIZE:
+            self.last_action = ''
+            self.last_see_player = False
+            return monster.fighter.speed
+        
+        # monster fov if near enough to player
+        monster_view = tdl.map.quickFOV(monster.x, monster.y,
+                                     is_visible_tile, radius = self.fov_radius)
+                                     
+                                     # self.fov,
+                                     # radius=self.fov_radius,
+                                     # lightWalls=constants.FOV_LIGHT_WALLS)
+                                     
+                                     #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
+        
+        # if monster sees player...
+        if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
+            #logging.info('Player is in view of %s', self.owner.name)
+            
+            #notify player he's been seen...
+            if not self.last_see_player:
+                self.last_see_player = True
+                if (monster.x,monster.y) in _dungeon.visible_tiles:
+                    _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
+            
+            return self.take_fight()
+                
+        else:
+            self.last_see_player = False
+            act = randint(0,12)
+            if act == 0:
+                return self.take_fight() # move towards player
+            elif act < 4:
+                return self.take_flee() # move away from player
+            else:
+                return monster.fighter.speed # do nothing
 
 ### functions with  no class ###
 

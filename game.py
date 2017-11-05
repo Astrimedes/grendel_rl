@@ -217,7 +217,7 @@ class Game:
                         if moved or picked_up:
                             names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
                             if names:
-                                self.message('You see tasty flesh here: ' + names + '. Press g to take some.')
+                                self.message('You see tasty flesh here: ' + names + '. Press g to take it.')
                         
                         #let monsters take their turn: during play state, when a turn has passed
                         if action.turns_used > 0:
@@ -702,12 +702,13 @@ class Game:
             
     def do_pickup(self, turn_action):
         #pick up an item
+        picked_up = False
         for obj in self.dungeon.objects:  #look for an item in the player's tile
             if obj.x == self.dungeon.player.x and obj.y == self.dungeon.player.y and obj.item:
                 self.dungeon.pick_up(obj.item)
                 turn_action.turns_used = self.dungeon.player.fighter.speed
-                return True
-        return False
+                picked_up = True
+        return picked_up
                 
     def do_inventory_use(self, turn_action):
         chosen_item = self.inventory_menu()

@@ -7,11 +7,10 @@ SCREEN_HEIGHT = 54
 TILE_SIZE = 16
 
 #size of the map
-MAP_WIDTH = 80
+MAP_WIDTH = 60
 MAP_HEIGHT = 60
 
 # sizes and coordinates relevant for the GUI
-
 # messages panel
 MSG_PANEL_HEIGHT = 12
 MSG_PANEL_X = 0
@@ -40,7 +39,7 @@ ROOM_MIN_SIZE = 3
 MAX_ROOMS = 36
 
 # monster qty
-MONSTER_COUNT = 24
+MONSTER_COUNT = 20
 MONSTER_TOUGH = 0.19
 MONSTER_WEAK = 1.0 - MONSTER_TOUGH
 
