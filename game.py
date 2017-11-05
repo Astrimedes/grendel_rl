@@ -68,6 +68,7 @@ class Game:
                 savefile['messages'] = self.messages
                 savefile['timestamps'] = self.timestamps
                 savefile['turn'] = self.dungeon.turn
+                savefile['start_time'] = self.dungeon.start_time
         else:
             logging.info("Dead: clearing save file...")
             shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
@@ -107,6 +108,7 @@ class Game:
                     self.messages = savefile['messages']
                     self.timestamps = savefile['timestamps']
                     self.dungeon.turn = savefile['turn']
+                    self.dungeon.start_time = savefile['start_time']
                     if self.dungeon.player.fighter.hp > 0:
                         self.state = constants.STATE_PLAYING
                     else:
@@ -155,8 +157,7 @@ class Game:
         self.messages = []
      
         #a warm welcoming message!
-        #self.message('You sneak into Heorot, home of Beowulf and his men...', colors.red)
-        self.message('Their music and merriment ends tonight - they all must die!  And then some more text happened.', colors.red)
+        self.message('You sneak into Heorot, home of Beowulf and his men... Their music and merriment ends tonight - they all must die!', colors.red)
      
     ### MAIN LOOP ###
     def play_game(self):
@@ -357,7 +358,7 @@ class Game:
         
         
     ### MENU WITH INPUT ###
-    def menu(self, header, options, width):
+    def menu(self, header, options, width, root_x=None, root_y=None):
         if len(options) > 26:
             raise ValueError ('Cannot have a menu with more than 26 options.')
      
@@ -366,19 +367,19 @@ class Game:
         header_height = len(header_wrapped)
         if header == '':
             header_height = 0
-        height = len(options) + header_height
+        height = len(options) + header_height + 2
      
         #create an off-screen console that represents the menu's window
  
         window = tdl.Console(width, height)
      
         #print the header, with wrapped text
-        window.draw_rect(0, 0, width, height, None, fg=colors.white, bg=None)
+        window.draw_rect(0, 1, width, height, None, fg=colors.white, bg=None)
         for i, line in enumerate(header_wrapped):
-            window.draw_str(0, 0+i, header_wrapped[i])
+            window.draw_str(0, 1+i, header_wrapped[i])
      
         #print all the options
-        y = header_height
+        y = header_height + 1
         letter_index = ord('a')
         c2 = (colors.lightest_grey, colors.lighter_grey)
         for idx, option_text in enumerate(options):
@@ -392,8 +393,14 @@ class Game:
             letter_index += 1
      
         #blit the contents of "window" to the root_console console
-        x = constants.SCREEN_WIDTH//2 - width//2
-        y = constants.SCREEN_HEIGHT//2 - height//2
+        if root_x == None:
+            x = constants.SCREEN_WIDTH//2 - width//2
+        else:
+            x = root_x
+        if root_y == None:
+            y = constants.SCREEN_HEIGHT//2 - height//2
+        else:
+            y = root_y
         self.root_console.blit(window, x, y, width, height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
      
         #present the root_console console to the player and wait for a key-press
@@ -429,18 +436,14 @@ class Game:
     ### INVENTORY ###
     def inventory_menu(self, header="Press an item's key to eat it, or any other to cancel.\n"):
         #show a menu with each item of the inventory as an option
-        weapon = self.dungeon.player.weapon()
-        if len(self.dungeon.inventory) == 0 and not weapon:
+        if len(self.dungeon.inventory) == 0:
             options = ['No items.  Kill more men!']
         else:
             options = []
             for item in self.dungeon.inventory:
-                if item == weapon:
-                    options.append(item.name() + '----[Equipped Weapon]')
-                else:
-                    options.append(item.inventory_name())
+                options.append(item.inventory_name())
      
-        index = self.menu(header, options, constants.INVENTORY_WIDTH)
+        index = self.menu(header, options, constants.CAMERA_WIDTH - 2, constants.STAT_PANEL_WIDTH+1, 1)
         logging.info('Inventory: chose index %s', index)
         
         #if an item was chosen, return it
@@ -471,8 +474,8 @@ class Game:
         #make sure the camera doesn't see outside the map
         if x < 0: x = 0
         if y < 0: y = 0
-        if x > constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1: x = constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1
-        if y > constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1: y = constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1
+        if x > constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1: x = constants.MAP_WIDTH - constants.CAMERA_WIDTH
+        if y > constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1: y = constants.MAP_HEIGHT - constants.CAMERA_HEIGHT
  
         if x != self.camera_x or y != self.camera_y: self.fov_recompute = True
         (self.camera_x, self.camera_y) = (x, y)
@@ -749,10 +752,13 @@ class Game:
                                              fov=constants.FOV_ALGO,
                                              radius=self.dungeon.player.fov,
                                              lightWalls=constants.FOV_LIGHT_WALLS)
+                                             
+        # draw frame around map
+        self.map_console.draw_frame(0, 0, self.map_console.width, self.map_console.height, string=None, fg=None, bg=constants.color_frame)
      
         #go through all tiles in camera view, and set their background color according to the FOV
-        for y in range(constants.CAMERA_HEIGHT):
-            for x in range(constants.CAMERA_WIDTH):
+        for y in range(1, constants.CAMERA_HEIGHT-1):
+            for x in range(1, constants.CAMERA_WIDTH-1):
                 map_x, map_y = (self.camera_x + x, self.camera_y + y)
                 visible = (map_x, map_y) in self.dungeon.visible_tiles
                 wall = self.dungeon.map[map_x][map_y].block_sight
@@ -827,12 +833,53 @@ class Game:
     def render_stats(self):
     
         self.status_panel.clear()
+        
+        # draw top and bottom 'frame'
+        self.status_panel.draw_frame(0, 0, constants.STAT_PANEL_WIDTH, 1, ' ', fg=None, bg=constants.color_frame)
+        self.status_panel.draw_frame(0, constants.STAT_PANEL_HEIGHT-1, constants.STAT_PANEL_WIDTH, 1, ' ', fg=None, bg=constants.color_frame)
+        
+        x = 1
+        y = 2
+        
+        # time of day (dungeon turn)
+        title = 'Time'
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        y += 1
+        # day, month, year
+        self.status_panel.draw_str(x, y, self.dungeon.date_string, bg=None, fg=colors.light_grey)
+        # time
+        y += 1
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(x, y, self.dungeon.time_string, bg=None, fg=colors.light_grey)
+        
+        # draw inventory counts
+        # get dict of items (name: count)
+        item_dict = self.dungeon.get_inv_dict()
+        y += 4
+        title = 'Inventory'
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        y += 1
+        title = '(press i to use)'
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.dark_grey)
+        for k in sorted(item_dict.keys()):
+            y += 1
+            logging.info(str(item_dict[k]))
+            line = k + ': ' + str(item_dict[k])
+            self.status_panel.draw_str(x, y, line, bg=None, fg=colors.light_grey)
+        if len(item_dict) < 5:
+            y += 5 - len(item_dict)
     
-        x = 0
-        y = constants.STAT_PANEL_HEIGHT - 12
-    
+        #show player stats
+        y += 4
+        title = 'Grendel'
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
         #show player's hp bar
-        self.render_bar(x, y, constants.STAT_PANEL_WIDTH, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
+        y += 1
+        self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
             colors.light_red, colors.darker_red)
         
         # show character stats
@@ -875,17 +922,17 @@ class Game:
         self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
         self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
         
-        # time of day (dungeon turn)
-        # day, month, year
-        y += 2
-        self.status_panel.draw_str(x, y, self.dungeon.date_string, bg=None, fg=colors.light_grey)
-        # time
-        y += 1
-        self.status_panel.draw_str(x, y, self.dungeon.time_string, bg=None, fg=colors.light_grey)
-        
         # enemies left!
-        y += 2
-        self.status_panel.draw_str(x, y, 'Enemies: ' + str(self.dungeon.enemies_left), bg=None, fg=colors.light_flame)
+        y = constants.STAT_PANEL_HEIGHT - 4
+        title = 'Enemies Left'
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_azure)
+        y += 1
+        title = str(self.dungeon.enemies_left)
+        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_flame)
+        
+        
         
         
     def clear_obj_render(self):
@@ -923,6 +970,6 @@ def make_mod_text_color(diff):
     else:
         c = colors.red
         
-    return ('(' + note + ')'), c
+    return (note), c
     
 

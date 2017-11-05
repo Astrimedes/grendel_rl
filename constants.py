@@ -13,9 +13,9 @@ MAP_HEIGHT = 60
 # sizes and coordinates relevant for the GUI
 
 # messages panel
-MSG_PANEL_HEIGHT = 14
-MSG_PANEL_X = 3
-MSG_PANEL_Y = SCREEN_HEIGHT - MSG_PANEL_HEIGHT
+MSG_PANEL_HEIGHT = 12
+MSG_PANEL_X = 0
+MSG_PANEL_Y = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 MSG_PANEL_WIDTH = SCREEN_WIDTH - MSG_PANEL_X
  
 # stat panel
@@ -40,9 +40,9 @@ ROOM_MIN_SIZE = 3
 MAX_ROOMS = 36
 
 # monster qty
-MONSTER_COUNT = 55
-MONSTER_TOUGH = 0.34
-MONSTER_WEAK = 0.66
+MONSTER_COUNT = 24
+MONSTER_TOUGH = 0.19
+MONSTER_WEAK = 1.0 - MONSTER_TOUGH
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
@@ -81,6 +81,9 @@ color_dark_wall = colors.darkest_gray
 
 color_light_ground = colors.light_sepia
 color_light_wall = colors.sepia
+
+#ui colors
+color_frame = colors.desaturated_azure
 
 color_target = colors.light_orange
 

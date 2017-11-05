@@ -80,6 +80,18 @@ class Item:
                                               #cancelled for some reason
                 return True
         return False
+        
+    def __lt__(self, other):
+        return self.name() < other.name()
+        
+    def __gt__(self, other):
+        return self.name() > other.name()
+        
+    def __lte__(self, other):
+        return self.__lt(other) or self.name() == other.name()
+        
+    def __gte__(self, other):
+        return self.__gt(other) or self.name() == other.name()
  
 class GameObject:
     #this is a generic object: the player, a monster, an item, the stairs...
@@ -215,10 +227,10 @@ class Fighter:
             
             fraction = 1 - (newhp / self.max_hp)
             
-            cc = colors.mutate_color(colors.white, attack_color, fraction)
+            #cc = colors.mutate_color(colors.white, attack_color, fraction)
                 
             self.owner.dungeon.game.message(attacker_name + "'s " + weapon_name + ' ' + attack_verb + 
-                  ' ' + selfname + ' for ' + str(damage) + ' damage.', cc)
+                  ' ' + selfname + ' for ' + str(damage) + ' damage.', attack_color)
                   
             self.take_dmg_silent(damage)
             
@@ -366,10 +378,10 @@ class BarbarianTough(Barbarian):
         bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
         
-        bt_fighter = Fighter(hp=18, defense=3, power=6,
+        bt_fighter = Fighter(hp=20, defense=3, power=8,
             speed=1.5, death_function=self.death)
         
-        weapon = Weapon(min_dmg=3, max_dmg=7, speed=-0.5, 
+        weapon = Weapon(min_dmg=4, max_dmg=8, speed=0, 
         attack_names=['battle axe', 'mighty axe'], 
         attack_verbs=['cleaves', 'chops', 'carves'], 
         map_char = 'w', map_color = colors.white)
@@ -460,6 +472,7 @@ class Dungeon:
         self.level = 1
         
         # keeps track of turns passed (use monster/player speed to check when to act)
+        self.start_time = constants.START_TIME + randint(0, 10800)
         self.turn = 0
         self.calc_date_time() #set initial time values
         
@@ -477,11 +490,12 @@ class Dungeon:
         self.objects.append(self.player)
         
         # give the player some items
+        # self.inventory.append(ToughFlesh().item)
         # self.inventory.append(HealingPotion().item)
-        # self.inventory.append(LightningScroll().item)
-        # self.inventory.append(FireballScroll().item)
-        # self.inventory.append(Weapon())
-        
+        # self.inventory.append(StringyFlesh().item)
+        # self.inventory.append(HealingPotion().item)
+        # self.inventory.append(ToughFlesh().item)
+        # self.inventory.append(StringyFlesh().item)
     def count_enemies(self):
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
         self.enemies_left = len(fighters) - 1 # subtract player
@@ -533,16 +547,18 @@ class Dungeon:
                     continue
             
                 # qty of monsters can depend on room size
-                max_monsters = round((new_room[2] * new_room[3])/3.0)
-                monsters = randint(0, min(monsters_left, max_monsters))
-                monsters_left -= monsters
+                # max_monsters = round((new_room[2] * new_room[3])/3.0)
+                # monsters = randint(0, min(monsters_left, max_monsters))
+                # monsters_left -= monsters
             
                 # item qty depends on monster count
+                monsters = 1
                 items = randint(0, min(items_left, monsters))
                 items_left -= items
                 
                 # add them!
-                self.place_objects_gen(new_room, monsters, items)
+                self.place_objects_gen(new_room, monsters, items) # 1 monster
+                monsters_left -= 1
                 
 
                 
@@ -552,7 +568,7 @@ class Dungeon:
         mon_left = num_monsters
         for i in range(num_monsters):
             added = False
-            while not(added) and tries < 10:
+            while not(added) and tries < 100:
                 tries += 1
             
                 #choose random spot for this monster
@@ -577,24 +593,35 @@ class Dungeon:
                     # give it an item to drop on death if there are items left
                     if num_items > 0:
                         num_items = num_items - 1
-                        itmtype = randint(0,3)
+                        itmtype = randint(0,100)
                         if tough_monster:
-                            if itmtype == 0:
-                                itm = ToughFlesh(-1, -1)
-                            elif itmtype == 1:
-                                itm = Bones(-1, -1)
-                            else:
-                                itm = HealingPotion(-1, -1)
-                        else:
-                            if itmtype == 0:
+                            if itmtype < 10:
                                 itm = StringyFlesh(-1, -1)
-                            elif itmtype == 1:
+                            elif itmtype < 20:
                                 itm = Eyes(-1, -1)
+                            elif itmtype < 60:
+                                itm = ToughFlesh(-1, -1)
                             else:
-                                itm = HealingPotion(-1, -1)
-                        
+                                itm = Bones(-1, -1)
+                        else:
+                            if itmtype < 10:
+                                itm = ToughFlesh(-1, -1)
+                            elif itmtype < 20:
+                                itm = Bones(-1, -1)
+                            elif itmtype < 60:
+                                itm = StringyFlesh(-1, -1)
+                            else:
+                                itm = Eyes(-1, -1)
+                                
                         # add item to monster
                         monster.drop_objects.append(itm)
+                        
+                        # check for healing potion
+                        if randint(0,4) == 0:
+                            # add item to monster
+                            monster.drop_objects.append(HealingPotion(-1, -1))
+                        
+                        
          
                     # add monster to dungeon
                     self.objects.append(monster)
@@ -765,6 +792,9 @@ class Dungeon:
         self.game.message('You wait.')
         
     def ai_act(self, turns_passed):
+        # sort player inventory
+        self.inventory = sorted(self.inventory)
+    
         # advance dungeon 'clock'
         self.turn += turns_passed
         logging.info('%s turns passed in dungeon', self.turn)
@@ -786,10 +816,10 @@ class Dungeon:
             
     def calc_date_time(self):
         # time of day (dungeon turn)
-        seconds = float(constants.START_TIME + round(self.turn * 6.0))
+        seconds = float(self.start_time + round(self.turn * 6.0))
         stime = time.gmtime(seconds)
         # day, month, year (year is offset from 1970 in order to use normal date-time structs)
-        self.date_string = time.strftime("%a, %d %b", stime) + ', ' + str(int(stime[0] - constants.TIME_SUBTRACT_YEARS))
+        self.date_string = time.strftime("%d %b", stime) + ', ' + str(int(stime[0] - constants.TIME_SUBTRACT_YEARS)) + ' AD'
         self.time_string = time.strftime("%I:%M:%S %p", stime)
  
     def send_to_back(self, game_obj):
@@ -808,6 +838,15 @@ class Dungeon:
             self.inventory.append(item)
             self.objects.remove(item.owner)
             self.game.message('You picked up ' + item.owner.name + '!', colors.green)
+            
+    def get_inv_dict(self):
+        d = dict()
+        for itm in self.inventory:
+            if itm.name() in d:
+                d[itm.name()] += 1
+            else:
+                d[itm.name()] = 1
+        return d
         
         
 class BasicMonster:
@@ -880,7 +919,8 @@ class BasicMonster:
             
             # Flee if badly wounded
             fraction = monster.fighter.hp / monster.fighter.max_hp
-            flee = (fraction < self.flee_health and pfraction > 0.55) and (self.last_action == BasicMonster.FLEE or randfloat(0.0,1.0) < self.flee_chance)
+            roll = randfloat(0.0,1.0)
+            flee = (fraction < self.flee_health and pfraction > 0.55) and ((self.last_action == BasicMonster.FLEE and roll < 0.8) or (roll < self.flee_chance))
             if flee:
                 return self.take_flee()
             # Otherwise, Fight!
@@ -1093,8 +1133,10 @@ def penalty_defense():
 def bonus_speed():
     # penalize power
     penalty_power()
-
+    
+    # boost speed
     _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
+    
     _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
    
     #try_penalty(penalty_vision, penalty_power, penalty_defense)
