@@ -29,6 +29,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 _dungeon = None
                 
+"""
+Map tile without a GameObject
+"""
 class Tile:
     #a tile of the map and its properties
     def __init__(self, blocked, block_sight=None):
@@ -41,9 +44,11 @@ class Tile:
         if block_sight is None: 
             block_sight = blocked
         self.block_sight = block_sight
-        
+
+"""
+A consumable Item that can be picked up and used by the player
+"""
 class Item:
-    #an item that can be picked up and used.
     def __init__(self, use_function=None, inv_description=''):
         self.use_function = use_function
         self.owner = None
@@ -69,6 +74,9 @@ class Item:
     def inventory_name(self):
         return self.name() + ' ' + self.inv_description
  
+    """
+    Use this item
+    """
     def use(self):
         #just call the "use_function" if it is defined
         if self.use_function is None:
@@ -80,7 +88,10 @@ class Item:
                                               #cancelled for some reason
                 return True
         return False
-        
+    
+    """
+    Comparison methods
+    """
     def __lt__(self, other):
         return self.name() < other.name()
         
@@ -92,7 +103,10 @@ class Item:
         
     def __ge__(self, other):
         return self.__gt(other) or self.name() == other.name()
- 
+
+"""
+An object on the map with an x,y position.  can contain ai, fighers, item, or 'corpses'
+"""
 class GameObject:
     #this is a generic object: the player, a monster, an item, the stairs...
     #it's always represented by a character on screen.
@@ -119,7 +133,10 @@ class GameObject:
         self.item = item
         if self.item:  #let the Item component know who owns it
             self.item.owner = self
-            
+
+"""
+Healing item
+"""
 class Heart(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal, inv_description='(heals damage)')
@@ -127,13 +144,19 @@ class Heart(GameObject):
             colors.flame, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
-                 
+
+"""
+Power bonus item
+"""
 class Muscle(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_power, inv_description='(+Strength,-Speed)')
         GameObject.__init__(self, _dungeon, x, y, '&', constants.PART_POWER,
             colors.light_flame, item=itm)
-            
+
+"""
+Speed bonus item
+"""
 class Legs(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
@@ -146,27 +169,19 @@ class Eyes(GameObject):
         GameObject.__init__(self, _dungeon, x, y, '*', constants.PART_FOV,
             colors.light_flame, item=itm)
             
+"""
+Defense bonus item
+"""
 class Torso(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_defense, inv_description='(+Toughness,-Vision)')
         GameObject.__init__(self, _dungeon, x, y, '#', constants.PART_DEFENSE,
             colors.light_flame, item=itm)
        
-            
-class LightningScroll(GameObject):
-    def __init__(self, x=0, y=0):
-        itm = Item(cast_lightning)
-        GameObject.__init__(self, _dungeon, x, y, '#', 'scroll of lightning bolt',
-            colors.light_blue, item=itm)
-        
-            
-class FireballScroll(GameObject):
-    def __init__(self, x=0, y=0):
-        itm = Item(cast_fireball)
-        GameObject.__init__(self, _dungeon, x, y, '#', 'scroll of fireball',
-            colors.light_flame, item=itm)
-        
-        
+
+"""
+A creature's combat representation: hp, power, attack, take_dmg etc
+"""
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
     def __init__(self, hp, defense, power, speed=1, death_function=None, weapon=None):
@@ -194,7 +209,7 @@ class Fighter:
             return self.speed
         
     def pass_time(self):
-        logging.debug('%s fighter.pass_time()', self.owner.name)
+        logging.info('%s fighter.pass_time()', self.owner.name)
         if self.owner.ai:
             t = self.move_speed()
             if self.owner.ai.pdistance <= constants.MIN_PDIST and self.owner.fighter.weapon:
@@ -283,7 +298,9 @@ class Fighter:
         if self.hp > self.max_hp:
             self.hp = self.max_hp
 
-            
+"""
+Player GameObject
+"""
 class Player(GameObject):
     def __init__(self, dungeon, x, y):
     
@@ -318,7 +335,10 @@ class Player(GameObject):
         #for added effect, transform the player into a corpse!
         self.char = '%'
         self.color = constants.color_dead
-            
+
+"""
+Weak enemy (GameObject)
+"""
 class Scout(GameObject):
     #Scout monster GameObject
     def __init__(self, dungeon, x, y):
@@ -348,10 +368,7 @@ class Scout(GameObject):
         self.dungeon.game.message(self.name + 
             choice([' dies!', 
             ' is destroyed!', 
-            " dies screaming!"]), colors.orange)                
-            
-        # descrease enemy count
-        self.dungeon.enemies_left -= 1
+            " dies screaming!"]), colors.orange)
                 
         for itm in self.drop_objects:
             # give it this position
@@ -373,13 +390,18 @@ class Scout(GameObject):
         # sort this tile properly
         _dungeon.game.sort_obj_at(self.x, self.y)
         
+        # now re-count enemies (since we've set our Fighter to None)
+        self.dungeon.count_enemies()
+        
         # check for 'boss summon'
         if self.dungeon.enemies_left < 1:
             # summon beowulf!
             self.dungeon.create_Beowulf()
         
         
-                 
+"""
+Strong enemy (GameObject)
+"""
 class Warrior(Scout):
     #Warrior monster GameObject
     def __init__(self, dungeon, x, y):
@@ -402,7 +424,10 @@ class Warrior(Scout):
         GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
-                 
+
+"""
+The Boss enemy (GameObject)
+"""
 class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
@@ -442,7 +467,10 @@ class Beowulf(Scout):
         # sort this tile properly
         _dungeon.game.sort_obj_at(self.x, self.y)
         
-        
+
+"""
+Contains attack stats and attack names for a Fighter
+"""
 class Weapon(Item):
     def __init__(self, min_dmg=1, max_dmg=6, speed=0, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits'], map_char = 'w', map_color = colors.white):
         
@@ -499,7 +527,10 @@ class Weapon(Item):
             _dungeon.game.message('You are already using the ' + self.name() + '!')
             return False
         return True
-            
+
+"""
+Mapping, inventory, - main in-game object
+"""
 class Dungeon:
 
     def __init__(self, game):
@@ -628,20 +659,59 @@ class Dungeon:
                 max_monsters = 1
                 monsters = randint(0, min(monsters_left, max_monsters))
                 monsters_left -= monsters
-            
-                # item qty depends on monster count
-                #monsters = 1
-                items = randint(0, min(items_left, monsters))
-                items_left -= items
                 
                 # add them!
-                self.place_objects_gen(new_room, monsters, items)
+                self.place_objects_gen(new_room, monsters)
                 
+        # add items to monsters
+        self.add_items_to_monsters(constants.ITEM_QTY)
+        
+    def add_items_to_monsters(self, num_items):
+        monsters = [obj for obj in self.objects if obj.fighter and obj != self.player]
+    
+        # give it an item to drop on death if there are items left
+        monster = choice(monsters)
+        while num_items > 0:
+            monster = choice(monsters)
+            add_items = True
+            while add_items:
+                # choose item
+                itm = self.choose_item()
+                # add item to monster
+                if len(monster.drop_objects) > 0:
+                    names = [itm.name for itm in monster.drop_objects]
+                    tries = 0
+                    while itm.name in names and tries < 20:
+                        del itm
+                        itm = self.choose_item()
+                    if itm.name in names:
+                        del itm
+                if itm:
+                    num_items -= 1
+                    monster.drop_objects.append(itm)
+                    add_items = randint(0,100) < 5
+                else:
+                    add_items = False
+            
 
+    def choose_item(self):
+        itmtype = randint(0,4)
+        if itmtype == 0:
+            itm = Legs(-1, -1)
+        elif itmtype == 1:
+            itm = Eyes(-1, -1)
+        elif itmtype == 2:
+            itm = Muscle(-1, -1)
+        elif itmtype == 3:
+            itm = Torso(-1, -1)
+        else:
+            itm = Heart(-1, -1)
+            
+        return itm
                 
-    def place_objects_gen(self, room, num_monsters, num_items):        
+                
+    def place_objects_gen(self, room, num_monsters):        
         # room = (x, y, w, h)
-        num_items = max(num_monsters, num_items)
         tries = 0
         mon_left = num_monsters
         for i in range(num_monsters):
@@ -666,25 +736,6 @@ class Dungeon:
                     else:
                         #create a tough guy
                         monster = Warrior(self, x, y)
-                    
-                        
-                    # give it an item to drop on death if there are items left
-                    if num_items > 0:
-                        num_items = num_items - 1
-                        itmtype = randint(0,4)
-                        if itmtype == 0:
-                                itm = Legs(-1, -1)
-                        elif itmtype == 1:
-                            itm = Eyes(-1, -1)
-                        elif itmtype == 2:
-                            itm = Muscle(-1, -1)
-                        elif itmtype == 3:
-                            itm = Torso(-1, -1)
-                        else:
-                            itm = Heart(-1, -1)
-                                
-                        # add item to monster
-                        monster.drop_objects.append(itm)
                         
                     # add monster to dungeon
                     self.objects.append(monster)
@@ -773,7 +824,7 @@ class Dungeon:
         return (dx,dy)
         
         
-    def move_astar(self, game_obj, x, y):
+    def move_astar(self, game_obj, x, y, max_pathsize=999):
         #Create a FOV map that has the dimensions of the map
         fov = tcod.map_new(constants.MAP_WIDTH, constants.MAP_HEIGHT)
  
@@ -804,7 +855,7 @@ class Dungeon:
         #Check if the path exists, and in this case, also the path is shorter than 25 tiles
         #The path size matters if you want the monster to use alternative longer paths (for example through other rooms) if for example the player is in a corridor
         #It makes sense to keep path size relatively low to keep the monsters from running around the map if there's an alternative path really far away        
-        if not tcod.path_is_empty(my_path) and tcod.path_size(my_path) < constants.DEFAULT_PATHSIZE:
+        if not tcod.path_is_empty(my_path) and tcod.path_size(my_path) < max_pathsize:
             #Find the next coordinates in the computed full path
             x, y = tcod.path_walk(my_path, True)
             if not (x is None or y is None) and not self.is_blocked(x, y):
@@ -901,7 +952,7 @@ class Dungeon:
             self.objects.remove(item.owner)
             self.game.message('You picked up ' + item.owner.name + '!', colors.green)
             
-    def get_inv_dict(self):
+    def get_inv_count_dict(self):
         d = dict()
         for itm in self.inventory:
             if itm.name() in d:
@@ -910,7 +961,20 @@ class Dungeon:
                 d[itm.name()] = 1
         return d
         
+    """
+    Return a dict by inventory_name(), each element is single a item of type
+    """
+    def get_inv_item_dict(self):
+        d = dict()
+        for itm in self.inventory:
+            if not(itm.inventory_name() in d):
+                d[itm.inventory_name()] = itm
+        return d
         
+
+"""
+Monster AI
+"""
 class BasicMonster:
 
     FLEE = 'flee'
@@ -947,6 +1011,11 @@ class BasicMonster:
         self.pdistance = self.dungeon.distance_to(monster, self.dungeon.player)
         
         logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
+        
+        # last enemy should find the player
+        if self.dungeon.enemies_left == 1:
+            if randint(0,10) < 10:
+                return self.take_fight() # move towards player
         
         # ignore if monster too far away
         if self.pdistance > constants.DEFAULT_PATHSIZE:
@@ -1118,7 +1187,9 @@ class BasicMonster:
             return self.owner.fighter.attack_speed()        
             
         
-        
+"""
+Monster AI (tough monster)
+"""
 class BossMonster(BasicMonster):
     #AI for boss monster
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
@@ -1177,8 +1248,6 @@ class BossMonster(BasicMonster):
                 return monster.fighter.speed # do nothing
 
 ### functions with  no class ###
-
-            
 ### callback functions ###
 def is_visible_tile(x, y):
 
@@ -1193,85 +1262,98 @@ def is_visible_tile(x, y):
     else:
         return True
         
-### FLESH POWERUPS ###
-PEN_FRAC = 0.75
-SPEED_BONUS = -0.06
-SPEED_PENALTY = -SPEED_BONUS * PEN_FRAC
-POWER_BONUS = 3
-POWER_PENALTY = -POWER_BONUS * PEN_FRAC
-VISION_BONUS = 0.6
-VISION_PENALTY = -VISION_BONUS * PEN_FRAC
-DEFENSE_BONUS = 1.5
-DEFENSE_PENALTY = -DEFENSE_BONUS * PEN_FRAC
+
 
 COLOR_BONUS = colors.dark_green
 COLOR_PENALTY = colors.dark_flame
 
-# PART_POWER = 'Muscles'
-# PART_DEFENSE = 'Torso'
-# PART_SPEED = 'Legs'
-# PART_FOV = 'Eyes'
-
+"""
+Bonus to Power method
+"""
 def bonus_power():
     # penalize speed
     penalty_speed()
 
-    _dungeon.player.fighter.power += POWER_BONUS
+    _dungeon.player.fighter.power += constants.POWER_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_POWER + ' makes you feel stronger!', COLOR_BONUS)
     
     #try_penalty(penalty_vision, penalty_speed, penalty_defense)
     return True
             
+"""
+Penalty to Power method
+"""
 def penalty_power():
-    _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + POWER_PENALTY, constants.MIN_POWER)
+    _dungeon.player.fighter.power = max(_dungeon.player.fighter.power + constants.POWER_PENALTY, constants.MIN_POWER)
     _dungeon.game.message("Eating the " + constants.PART_SPEED + " makes you feel weaker, too.", COLOR_PENALTY)
-    
+
+"""
+Bonus to Defense method
+"""
 def bonus_defense():
     # penalize vision
     penalty_vision()
 
-    _dungeon.player.fighter.defense += DEFENSE_BONUS
+    _dungeon.player.fighter.defense += constants.DEFENSE_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_DEFENSE + ' makes you feel tougher!', COLOR_BONUS)
    
     #try_penalty(penalty_vision, penalty_power, penalty_speed)
     return True    
     
+"""
+Penalty to Defense method
+"""
 def penalty_defense():
-    _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + DEFENSE_PENALTY, constants.MIN_DEFENSE)
+    _dungeon.player.fighter.defense = max(_dungeon.player.fighter.defense + constants.DEFENSE_PENALTY, constants.MIN_DEFENSE)
     _dungeon.game.message("Eating the " + constants.PART_FOV + " makes you feel less tough, too.", COLOR_PENALTY)
-    
+
+"""
+Bonus to Speed method
+"""
 def bonus_speed():
     # penalize power
     penalty_power()
     
     # boost speed
-    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + SPEED_BONUS)
+    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + constants.SPEED_BONUS)
     
     _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
    
     #try_penalty(penalty_vision, penalty_power, penalty_defense)
     return True
     
+"""
+Penalty to Speed method
+"""
 def penalty_speed():
-    _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + SPEED_PENALTY, constants.MAX_SPEED)
+    _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + constants.SPEED_PENALTY, constants.MAX_SPEED)
     _dungeon.game.message("Eating the " + constants.PART_POWER + " makes you feel slower, too.", COLOR_PENALTY)
     
+"""
+Bonus to Vision method
+"""
 def bonus_vision():
     # penalize defense
     penalty_defense()
 
     _dungeon.game.fov_recompute = True
-    _dungeon.player.fov += VISION_BONUS
+    _dungeon.player.fov += constants.VISION_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_FOV + ' improves your vision!', COLOR_BONUS)
     
     #try_penalty(penalty_speed, penalty_power, penalty_defense)
     return True
     
+"""
+Penalty to Speed method
+"""
 def penalty_vision():
     _dungeon.game.fov_recompute = True
-    _dungeon.player.fov = max(_dungeon.player.fov + VISION_PENALTY, constants.MIN_VISION)
+    _dungeon.player.fov = max(_dungeon.player.fov + constants.VISION_PENALTY, constants.MIN_VISION)
     _dungeon.game.message("Eating the " + constants.PART_DEFENSE + " makes your vision worse, too.", COLOR_PENALTY)
     
+"""
+Randomly select a paramaterless function from choices...
+"""
 def try_penalty(penalty1, penalty2, penalty3):
     pen = choice([penalty1, penalty2, penalty3])
     pen()
@@ -1350,6 +1432,9 @@ def cast_fireball():
     return True
     
     
+"""
+Randomly rotate a point (x,y) within a set of clockface 'positions'
+"""
 clockwise = [(1,0), (1,1), (0,1), (-1,1), (-1,0), (-1,-1), (0,-1), (1,-1)]
 counter =   [(-1,0), (-1,1), (0,1), (1,1), (1,0), (1,-1), (0,-1), (-1,-1)]
 def rotate_pt(point, turn_clockwise=True):

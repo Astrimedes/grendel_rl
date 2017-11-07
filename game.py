@@ -17,6 +17,9 @@ import time
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+"""
+Describes the intent of player keypress captured
+"""
 class TurnEvent:
     # information about what transpired while resolving player input (did a turn pass?)
     def __init__(self, turns_used, description = '', move_x = 0, move_y = 0, attacked=False):
@@ -26,6 +29,9 @@ class TurnEvent:
         self.move_y = move_y
         self.attacked = attacked
 
+"""
+Runs game loop, menus, targeting
+"""
 class Game:
     def __init__(self):
         self.map_console = None
@@ -256,11 +262,12 @@ class Game:
             #show the title image
             
             #img.blit(self.root_console, xcenter, ycenter, tcod.BKGND_SET, 0.25, 0.25, 0)
-            img.blit_2x(self.root_console, img_x, img_y)
+            #img.blit_2x(self.root_console, img_x, img_y)
+            img.blit(self.root_console, constants.SCREEN_WIDTH//2, constants.SCREEN_HEIGHT//2, tcod.BKGND_SET, 0.5, 0.5, 0)
             
             #show the game's title, and some credits!
-            title_console.draw_str(title_center, 0, title, bg=None, fg=colors.azure)
-            title_console.draw_str(author_center, 2, author, bg=None, fg=colors.dark_azure)
+            title_console.draw_str(title_center, 0, title, bg=None, fg=colors.dark_yellow)
+            title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
             self.root_console.blit(title_console, tconsole_x, tconsole_y, title_console.width, title_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
             
             tdl.flush()
@@ -439,20 +446,24 @@ class Game:
         if len(self.dungeon.inventory) == 0:
             options = ['No items.  Kill more men!']
         else:
-            options = []
-            for item in self.dungeon.inventory:
-                options.append(item.inventory_name())
-     
+            d = self.dungeon.get_inv_item_dict()
+            keys = list(d.keys())
+            options = keys
+        
+        # bring up menu
         index = self.menu(header, options, constants.CAMERA_WIDTH - 2, constants.STAT_PANEL_WIDTH+1, 1)
         logging.info('Inventory: chose index %s', index)
         
-        #if an item was chosen, return it
+        #exit early if invalid choice or no inventory
         if index is None or len(self.dungeon.inventory) == 0:
             logging.info('Inv index: %s, inventory len: %s', index, len(self.dungeon.inventory))
             return None
             
-        logging.info('Inv item chosen: %s', self.dungeon.inventory[index])
-        return self.dungeon.inventory[index]
+        item = d[keys[index]]
+        del d
+        
+        logging.info('Inv item chosen: %s', item)
+        return item
 
         
     ### Camera ###
@@ -742,6 +753,47 @@ class Game:
         text = name + ': ' + str(value) + '/' + str(maximum)
         x_centered = x + (total_width-len(text))//2
         self.status_panel.draw_str(x_centered, y, text, fg=colors.white, bg=None)
+        
+        
+    def render_stat_bar(self, x, y, total_width, name, diff_value, bonus_amt):
+        
+        #render the background first
+        #self.status_panel.draw_rect(x, y, total_width, 1, None, bg=colors.darkest_yellow)
+        
+        # determine color and text displaying bonus/penalty
+        c = None
+        t = None
+        t, c = make_mod_text_color(diff_value)
+        
+        x_offset_pos = x + 7
+        
+        # calc bar width
+        raw_value = round(abs(diff_value) / bonus_amt,2)
+        bar_width = min(int(raw_value), total_width)
+        
+        # stat bar
+        if diff_value != 0:
+            bar_width = max(1,bar_width)
+            if diff_value > 0:
+                self.status_panel.draw_rect(x_offset_pos, y, bar_width, 1, None, bg=colors.darker_green)
+            elif diff_value < 0:
+                self.status_panel.draw_rect(x_offset_pos, y, bar_width, 1, None, bg=colors.darker_red)
+     
+        #text with the value
+        #pos
+        x_offset_pos = x + total_width - 5
+        #string
+        t = str(raw_value)
+        s = '+'
+        if diff_value < 0:
+            s = '-'
+        t = s+t
+        # stat name
+        self.status_panel.draw_str(x, y, name, fg=colors.white, bg=None)
+        # modifier
+        self.status_panel.draw_str(x_offset_pos, y, t, fg=colors.white, bg=None)
+        
+     
      
     def render_all(self):
         logging.debug('render_all')
@@ -865,7 +917,7 @@ class Game:
         
         # draw inventory counts
         # get dict of items (name: count)
-        item_dict = self.dungeon.get_inv_dict()
+        item_dict = self.dungeon.get_inv_count_dict()
         y += 4
         title = 'Inventory'
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
@@ -894,43 +946,47 @@ class Game:
         
         # show character stats
         pfighter = self.dungeon.player.fighter
-        
+
         # Strength
         y += 2
         stat = round(pfighter.power,1)
         diff = round(pfighter.power - constants.START_POWER,1)
-        note, c = make_mod_text_color(diff)
-        stat_msg = 'Str: ' + str(stat) + ' '
-        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
+        # note, c = make_mod_text_color(diff)
+        # stat_msg = 'Str: ' + str(stat) + ' '
+        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        # self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
+        self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Str', diff, constants.POWER_BONUS)
         
         # Toughness
         y += 1
         stat = round(pfighter.defense, 1)
         diff = round(pfighter.defense - constants.START_DEFENSE,1)
-        note, c = make_mod_text_color(diff)
-        stat_msg = 'Tough: ' + str(stat) + ' '
-        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
+        # note, c = make_mod_text_color(diff)
+        # stat_msg = 'Tough: ' + str(stat) + ' '
+        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        # self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
+        self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Tough', diff, constants.DEFENSE_BONUS)
         
         # Speed (inverse!)
         # calc display for speed: how many tiles per 1 turn?
         y += 1
         stat =  round(round(1.0 + (1.0 - pfighter.move_speed()),2) * 100.0)
         diff =  stat - round(round(1.0 + (1.0 - constants.START_SPEED),2) * 100)
-        note, c = make_mod_text_color(diff)
-        stat_msg = 'Speed: ' + str(stat) + '% '
-        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
+        # note, c = make_mod_text_color(diff)
+        # stat_msg = 'Speed: ' + str(stat) + '% '
+        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        # self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
+        self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Speed', diff, (-constants.SPEED_BONUS * 100))
         
         # Vision
         y += 1
         stat = round(self.dungeon.player.fov,1)
         diff = round(self.dungeon.player.fov - constants.START_VISION,1)
-        note, c = make_mod_text_color(diff)
-        stat_msg = 'Vision: ' + str(stat) + ' '
-        self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
+        # note, c = make_mod_text_color(diff)
+        # stat_msg = 'Vision: ' + str(stat) + ' '
+        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
+        # self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
+        self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Vision', diff, constants.VISION_BONUS)
         
         # enemies left!
         y = constants.STAT_PANEL_HEIGHT - 4

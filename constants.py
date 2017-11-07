@@ -7,8 +7,8 @@ SCREEN_HEIGHT = 54
 TILE_SIZE = 16
 
 #size of the map
-MAP_WIDTH = 60
-MAP_HEIGHT = 40
+MAP_WIDTH = 80
+MAP_HEIGHT = 60
 
 # sizes and coordinates relevant for the GUI
 # messages panel
@@ -34,14 +34,17 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 8
-ROOM_MIN_SIZE = 3
+ROOM_MAX_SIZE = 10
+ROOM_MIN_SIZE = 4
 MAX_ROOMS = 36
 
 # monster qty
 MONSTER_COUNT = 26
 MONSTER_TOUGH = 0.34
 MONSTER_WEAK = 1.0 - MONSTER_TOUGH
+
+# ITEMS
+ITEM_QTY = MONSTER_COUNT // 2
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
@@ -146,10 +149,10 @@ BARMAX_RES = MIN_DEFENSE
 BARMAX_VIS = MIN_VISION
 
 # consumable body part names
-PART_POWER = 'Muscles'
+PART_POWER = 'Muscle'
 PART_DEFENSE = 'Torso'
-PART_SPEED = 'Legs'
-PART_FOV = 'Eyes'
+PART_SPEED = 'Leg'
+PART_FOV = 'Eye'
 
 # indicates 1 tile away
 MIN_PDIST = 1.415
@@ -157,3 +160,15 @@ MIN_PDIST = 1.415
 # start date/time in seconds
 START_TIME = 26168400 #Oct 30, 1970 AD, 9:00 PM (convert years)
 TIME_SUBTRACT_YEARS = 1522
+
+# stat bonus / penalty
+### FLESH POWERUPS ###
+PEN_FRAC = 0.75
+SPEED_BONUS = -0.1
+SPEED_PENALTY = -SPEED_BONUS * PEN_FRAC
+POWER_BONUS = 4
+POWER_PENALTY = -POWER_BONUS * PEN_FRAC
+VISION_BONUS = 1
+VISION_PENALTY = -VISION_BONUS * PEN_FRAC
+DEFENSE_BONUS = 2
+DEFENSE_PENALTY = -DEFENSE_BONUS * PEN_FRAC
