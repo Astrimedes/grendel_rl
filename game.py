@@ -169,15 +169,16 @@ class Game:
             del self.messages
         self.messages = []
      
-        #a warm welcoming message!
-        self.message('You sneak into Heorot, home of Beowulf and his men... Their music and merriment ends tonight - they all must die!', colors.red)
-     
     ### MAIN LOOP ###
     def play_game(self):
      
         action = None
         self.mouse_coord = (0, 0)
         self.last_command_time = 0
+        
+        #a warm welcoming message!
+        msg = 'You sneak into Heorot, home of Beowulf and his men... Tonight they all must die!'
+        self.message(msg, colors.light_flame)
         
         while not tdl.event.is_window_closed():
             action = None
@@ -368,12 +369,12 @@ class Game:
             
             
     ### POP UP ###
-    def msgbox(self, text, width=50):
-        self.menu(text, [], width)  #use menu() as a sort of "message box"
+    def msgbox(self, text, width=50, tcolor=colors.white, map_window=False, sleeptime=None):
+            self.menu(text, [], width, map_window, tcolor=tcolor, sleeptime=sleeptime)  #use menu() as a sort of "message box"
         
         
     ### MENU WITH INPUT ###
-    def menu(self, header, options, width, root_x=None, root_y=None):
+    def menu(self, header, options, width, map_window=False, tcolor=colors.white, sleeptime=None):
         if len(options) > 26:
             raise ValueError ('Cannot have a menu with more than 26 options.')
      
@@ -389,9 +390,9 @@ class Game:
         window = tdl.Console(width, height)
      
         #print the header, with wrapped text
-        window.draw_rect(0, 1, width, height, None, fg=colors.white, bg=None)
+        window.draw_rect(0, 1, width, height, None, fg=tcolor, bg=None)
         for i, line in enumerate(header_wrapped):
-            window.draw_str(0, 1+i, header_wrapped[i])
+            window.draw_str(0, 1+i, header_wrapped[i], fg=tcolor)
      
         #print all the options
         y = header_height + 1
@@ -407,19 +408,23 @@ class Game:
             y += 1
             letter_index += 1
      
-        #blit the contents of "window" to the root_console console
-        if root_x == None:
+        #blit the contents of "window" to...
+        # top of dungeon map window
+        if map_window:
+            x = constants.STAT_PANEL_WIDTH+1
+            y = 0
+        # center of screen
+        else:
             x = constants.SCREEN_WIDTH//2 - width//2
-        else:
-            x = root_x
-        if root_y == None:
             y = constants.SCREEN_HEIGHT//2 - height//2
-        else:
-            y = root_y
+            
         self.root_console.blit(window, x, y, width, height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
      
         #present the root_console console to the player and wait for a key-press
         tdl.flush()
+        
+        if sleeptime:
+            time.sleep(sleeptime)
         
         # mark as having brought up a menu (ignore this input event after processing here)
         self.menu_invoked = True
@@ -459,7 +464,7 @@ class Game:
             options = keys
         
         # bring up menu
-        index = self.menu(header, options, constants.CAMERA_WIDTH - 2, constants.STAT_PANEL_WIDTH+1, 1)
+        index = self.menu(header, options, constants.CAMERA_WIDTH - 2, map_window=True)
         logging.info('Inventory: chose index %s', index)
         
         #exit early if invalid choice or no inventory
@@ -562,9 +567,12 @@ class Game:
  
     def get_obj_names_under_mouse(self):
         #return a string with the names of all objects under the mouse
-        x = self.mouse_coord[0] - constants.CAMERA_PANEL_X + self.camera_x
-        y = self.mouse_coord[1] - constants.CAMERA_PANEL_Y  + self.camera_y
-        return self.get_obj_names_at(x, y)
+        if self.mouse_coord:
+            x = self.mouse_coord[0] - constants.CAMERA_PANEL_X + self.camera_x
+            y = self.mouse_coord[1] - constants.CAMERA_PANEL_Y  + self.camera_y
+            return self.get_obj_names_at(x, y)
+        else:
+            return None
         
     def get_obj_names_at(self, x, y):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
@@ -931,7 +939,7 @@ class Game:
             y += 5 - len(item_dict)
         
         #show player stats
-        y += 1
+        y += 2
         self.drawtitle_stats('Grendel', y, fgcolor=tcolor)
         #show player's hp bar
         y += 1

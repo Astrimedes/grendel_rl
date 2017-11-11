@@ -149,6 +149,7 @@ class GameObject:
 Healing item
 """
 class Heart(GameObject):
+    #chr(173) - the 'drumstick'
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal, inv_description='(heals damage)')
         GameObject.__init__(self, _dungeon, x, y, chr(3), constants.PART_HEALING,
@@ -290,14 +291,15 @@ class Fighter:
         if self.owner == self.owner.dungeon.player:
             atk_color = colors.light_blue
         
+        shortname = strleft_back(self.owner.name, ' the ')
         if damage > 0:
             #make the target take some damage
             if not self.weapon:
-                target.fighter.take_damage(self.owner.name, choice(self.attack_verbs), choice(self.weapon_names), atk_color, damage)
+                target.fighter.take_damage(shortname, choice(self.attack_verbs), choice(self.weapon_names), atk_color, damage)
             else:
-                target.fighter.take_damage(self.owner.name, self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
+                target.fighter.take_damage(shortname, self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
         else:
-            self.owner.dungeon.game.message(self.owner.name + ' attacks ' + target.name + 
+            self.owner.dungeon.game.message(shortname + ' attacks ' + target.name + 
                   ' but it has no effect!')
  
     def heal(self, amount):
@@ -319,8 +321,8 @@ class Player(GameObject):
                                     speed=constants.START_SPEED, death_function=self.death)
         
         weapon = Weapon(min_dmg=4, max_dmg=6, speed=constants.START_ATK_SPEED, 
-        attack_names=['claws', 'great claws', 'bloody claws'], 
-        attack_verbs=['rake', 'gouge', 'tear', 'impale'], 
+        attack_names=['claws'], 
+        attack_verbs=['rake', 'slash', 'slice'], 
         map_char = 'w', map_color = colors.white)
         
         fighter_component.weapon = weapon
@@ -361,8 +363,8 @@ class Scout(GameObject):
             speed=1, death_function=self.death)
         
         weapon = Weapon(min_dmg=1, max_dmg=5, speed=0, 
-        attack_names=['short sword', 'sword'], 
-        attack_verbs=['hacks', 'slashes', 'pokes'], 
+        attack_names=['sword'], 
+        attack_verbs=['pokes', 'stabs'], 
         map_char = 'w', map_color = colors.white)
         
         barb_fighter.weapon = weapon
@@ -426,8 +428,8 @@ class Warrior(Scout):
             speed=1.5, death_function=self.death)
         
         weapon = Weapon(min_dmg=4, max_dmg=8, speed=0, 
-        attack_names=['battle axe', 'mighty axe'], 
-        attack_verbs=['cleaves', 'chops', 'carves'], 
+        attack_names=['greataxe'], 
+        attack_verbs=['chops', 'carves'], 
         map_char = 'w', map_color = colors.white)
         
         bt_fighter.weapon = weapon
@@ -618,7 +620,7 @@ class Dungeon:
                     self.objects.append(boss)
                     # announce!
                     self.game.message("From across the way you hear: I will avenge my kin, foul beast!", colors.light_violet)
-                    self.game.message("Your mightiest enemy, Beowulf has arrived!", colors.yellow)
+                    self.game.msgbox("Your mightiest enemy, Beowulf has arrived!", tcolor=colors.yellow, map_window=True)
                     added = True
                     break
         
@@ -803,6 +805,9 @@ class Dungeon:
             return True
 
     def is_blocked(self, x, y):
+        if x >= constants.MAP_WIDTH or y >= constants.MAP_HEIGHT or x < 0 or y < 0:
+            return True
+    
         #first test the map tile
         if self.map[x][y].blocked:
             return True
@@ -1033,10 +1038,10 @@ class Dungeon:
 """
 Monster AI
 """
-
 class NPC:
     def __init__(self, hearing = 0.1, laziness = 0.2, 
-            vision_range = constants.START_VISION, flee_health=0.44, flee_chance=0.7):
+            vision_range = constants.START_VISION, flee_health=0.4, flee_chance=0.75, 
+            curses=['Kill the beast!', 'Destroy the monster!', 'Die, creature!']):
         
         self.owner = None
         
@@ -1073,6 +1078,9 @@ class NPC:
         
         # chance to fall asleep
         self.laziness = laziness
+        
+        # fight shouts
+        self.curses = curses
         
         
     """
@@ -1118,8 +1126,10 @@ class NPC:
                         self.change_state(states.FIGHT)
                 # fight or flee player in view...
                 else:
-                    if self.pdistance > constants.MIN_PDIST and len(_dungeon.combatants) < 2 and self.owner.fighter.hp / self.owner.fighter.max_hp < self.flee_health and (self.state == states.FLEE or randfloat(0,1) <= self.flee_chance):
+                    # flee
+                    if (self.owner.fighter.hp / self.owner.fighter.max_hp < self.flee_health) and len(_dungeon.combatants) < 2 and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
                         self.change_state(states.FLEE)
+                    # otherwise fight
                     else:
                         self.change_state(states.FIGHT)
                     
@@ -1220,6 +1230,9 @@ class NPC:
             return False
             
     def set_flee_target(self):
+        if self.state_turns < 2:
+            _dungeon.game.message(self.owner.name + ' tries to flee!', colors.orange)
+        logging.info('%s: Set flee target', self.owner.name)
         # run opposite direction of player
         direction = _dungeon.get_direction(self.owner, self.last_px, self.last_py)
         xdir = -direction[0]
@@ -1228,9 +1241,9 @@ class NPC:
         # check individual paths for 'winner' of most clear squares
         tries = 0
         turn_clockwise = choice([True,False])
-        PATH_LENGTH = 8
+        PATH_LENGTH = 2
         best_path = None
-        most_clear = 0
+        most_clear = 10 # require minimum decent path
         best_idx = 0
         valid = False
         _xdir = xdir
@@ -1246,7 +1259,7 @@ class NPC:
             # path extends to 
             path = tdl.map.bresenham(x, y, x + (_xdir*PATH_LENGTH), y + (_ydir*PATH_LENGTH))
             i = 0
-            pdist = _dungeon.distance_to(self.owner, _dungeon.player)
+            pdist = _dungeon.distance(x, y, _dungeon.player.x, _dungeon.player.y)
             for i in range(0,len(path)):
                 pt = path[i]
                 blocked = _dungeon.is_blocked(pt[0], pt[1])
@@ -1278,7 +1291,7 @@ class NPC:
                     
             # rotate the direction for next iteration
             pt = (_xdir, _ydir)
-            (_xdir,_ydir) = rotate_pt(pt, turn_clockwise=turn_clockwise)
+            _xdir,_ydir = rotate_pt(pt, turn_clockwise=turn_clockwise)
         
         if valid:
             self.target_x = self.owner.x + xdir
@@ -1395,11 +1408,14 @@ class NPC:
     def take_fight(self):
         #move towards player if not close enough to strike
         if self.pdistance > constants.MIN_PDIST:
-        
             # check for state change to wander
             if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
                 self.change_state(states.WANDER)
                 return self.take_movetarget()
+                
+            # shout a curse at player
+            if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+                _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
         
             #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.last_px, self.last_py)
@@ -1413,212 +1429,6 @@ class NPC:
             return self.owner.fighter.attack_speed()
 
 
-class BasicMonster:
-
-    FLEE = 'flee'
-    FIGHT = 'fight'
-
-    #AI for a basic monster.
-    def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION, 
-        flee_health=0.35, flee_chance=0.7, curses=['The vile beast is here!','The thing from the moors! Die, monster!', 'Kill the beast!']):
-        
-        self.fov = fov_algo
-        self.fov_radius = vision_range
-        self.dungeon = dungeon
-        self.owner = None
-        self.flee_health = flee_health
-        self.flee_chance = flee_chance
-        
-        self.curses = curses
-        self.cursed = False
-        
-        #what this monster's been doing last turn
-        self.last_action = ''
-        self.last_see_player = False
-        
-        # distance to player last check
-        self.pdistance = 999
-        
-        self.leader = False
-
-    def take_turn(self):
-        #a basic monster takes its turn.
-        monster = self.owner
-        
-        # monster pathfinding
-        self.pdistance = self.dungeon.distance_to(monster, self.dungeon.player)
-        
-        logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
-        
-        # do nothing if player too far away
-        if self.pdistance > constants.DEFAULT_PATHSIZE:
-            self.last_action = ''
-            self.last_see_player = False
-            return monster.fighter.speed
-        
-        # fov if near enough to player
-        monster_view = tdl.map.quickFOV(monster.x, monster.y,
-                                     is_visible_tile, radius = self.fov_radius)
-                                     
-                                     # self.fov,
-                                     # radius=self.fov_radius,
-                                     # lightWalls=constants.FOV_LIGHT_WALLS)
-                                     
-                                     #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
-        
-        # if monster sees player...
-        if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
-            #logging.info('Player is in view of %s', self.owner.name)
-            
-            #notify player he's been seen...
-            if not self.last_see_player:
-                self.last_see_player = True
-                if (monster.x,monster.y) in _dungeon.visible_tiles:
-                    _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
-            
-            # Always fight if player is badly wounded or fighting other enemies
-            pfraction = _dungeon.player.fighter.hp / _dungeon.player.fighter.max_hp
-            if len(_dungeon.combatants) > 1 or pfraction < 0.4:
-                return self.take_fight()
-            
-            # Flee if badly wounded
-            fraction = monster.fighter.hp / monster.fighter.max_hp
-            roll = randfloat(0.0,1.0)
-            flee = (fraction < self.flee_health and pfraction > 0.55) and ((self.last_action == BasicMonster.FLEE and roll < 0.8) or (roll < self.flee_chance))
-            if flee:
-                return self.take_flee()
-            # Otherwise, Fight!
-            else:
-                return self.take_fight()
-        else:
-            self.last_see_player = False
-            act = randint(0,12)
-            if act <= 4:
-                return self.take_fight() # move towards player
-            elif act <= 8:
-                return self.move_towards_ally(constants.DEFAULT_PATHSIZE) # move towards allies
-            else:
-                return monster.fighter.speed # do nothing
-                
-        
-    # Flee! (return turns used)
-    def take_flee(self):
-    
-        if not(self.last_action == BasicMonster.FLEE):
-            self.last_action = BasicMonster.FLEE
-            if (self.owner.x, self.owner.y) in _dungeon.visible_tiles:
-                _dungeon.game.message(self.owner.name + ' tries to flee!', colors.orange)
-                
-        # run opposite direction of player
-        direction = _dungeon.get_direction(self.owner, _dungeon.player.x, _dungeon.player.y)
-        xdir = -direction[0]
-        ydir = -direction[1]
-        # cast ray out away from player, path where you can run the furthest is chosen
-        # check individual paths for 'winner' of most clear squares
-        tries = 0
-        turn_clockwise = choice([True,False])
-        PATH_LENGTH = 3
-        best_path = None
-        most_clear = 0
-        best_idx = 0
-        valid = False
-        _xdir = xdir
-        _ydir = ydir
-       
-        path = None
-        while tries < 8:
-            tries += 1
-            clear = 0
-            # check a path that starts 1 square away from monster in flee direction
-            x = self.owner.x + _xdir
-            y = self.owner.y + _ydir
-            # path extends to 
-            path = tdl.map.bresenham(x, y, x + (_xdir*PATH_LENGTH), y + (_ydir*PATH_LENGTH))
-            i = 0
-            pdist = _dungeon.distance_to(self.owner, _dungeon.player)
-            for i in range(0,len(path)):
-                pt = path[i]
-                if pt and _dungeon.is_visible_tile(pt[0], pt[1]) and (i == 0 or pdist >= 2):
-                    if i < len(path)-1:
-                        pt2 = path[i+1]
-                        if _dungeon.is_visible_tile(pt2[0], pt2[1]):
-                            clear += 1 #weight tiles that have another clear tile in front of them
-                    # weight tiles by distance from player early on in path
-                    clear += 1 + (pdist * 2) - (i//2)
-                else:
-                    break
-                #set new best
-            if clear > most_clear:
-                if not best_path is None:
-                    tcod.path_delete(best_path)
-            
-                best_path = path
-                most_clear = clear
-                best_idx = i
-                xdir = _xdir
-                ydir = _ydir
-                valid = True
-                #logging.info('%s Path: %s', self.owner.name, best_path)
-            else:
-                # free path from memory
-                if not path is None:
-                    tcod.path_delete(path)
-                    
-            # rotate the direction for next iteration
-            pt = (_xdir, _ydir)
-            (_xdir,_ydir) = rotate_pt(pt, turn_clockwise=turn_clockwise)
-        
-        if valid:
-            target = best_path[best_idx]
-            _dungeon.move_astar(self.owner, target[0], target[1])
-            tcod.path_delete(best_path)
-            return self.owner.fighter.move_speed()
-            
-        return self.take_fight()
-        
-        
-    def move_towards_ally(self, max_dist=40):
-        x = None
-        y = None
-        closest = 999
-        for obj in _dungeon.objects:
-            if obj.fighter and not obj == self.owner and not obj == _dungeon.player:
-                dist = _dungeon.distance2(self.owner.x, self.owner.y, obj.x, obj.y)
-                if obj.fighter.hp > self.owner.fighter.max_hp:
-                    dist -= 12
-                if dist < closest:
-                    closest = dist
-                    x = obj.x
-                    y = obj.y
-                
-        if closest < max_dist**2:
-            _dungeon.move_astar(self.owner, x, y)
-        else:
-            _dungeon.move_towards(self.owner, _dungeon.player.x, _dungeon.player.y)
-            
-        return self.owner.fighter.move_speed()
-                
-    # Fight! (return turns used)
-    def take_fight(self):
-        curse = False
-        if self.last_action != BasicMonster.FIGHT:
-            self.last_action = BasicMonster.FIGHT
-            curse = not(self.cursed) and self.pdistance <= self.fov_radius
-        #move towards player if far away
-        if curse:
-            _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
-            self.cursed = True
-        
-        if self.pdistance > constants.MIN_PDIST:
-            #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
-            _dungeon.move_astar(self.owner, self.dungeon.player.x, self.dungeon.player.y)
-            #return turns used
-            return self.owner.fighter.move_speed()
-        else:
-            #close enough, attack!
-            self.owner.fighter.attack(self.dungeon.player)
-            return self.owner.fighter.attack_speed()        
-            
         
 """
 Monster AI (tough monster)
@@ -1633,52 +1443,6 @@ class BossMonster(NPC):
             
         self.leader = True
         
-    def take_turn(self):
-        #a basic monster takes its turn.
-        monster = self.owner
-        
-        # monster pathfinding
-        self.pdistance = self.dungeon.distance_to(monster, _dungeon.player)
-        
-        logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
-        
-        # ignore if monster too far away
-        if self.pdistance > constants.DEFAULT_PATHSIZE:
-            self.last_action = ''
-            self.last_see_player = False
-            return monster.fighter.speed
-        
-        # monster fov if near enough to player
-        monster_view = tdl.map.quickFOV(monster.x, monster.y,
-                                     is_visible_tile, radius = self.fov_radius)
-                                     
-                                     # self.fov,
-                                     # radius=self.fov_radius,
-                                     # lightWalls=constants.FOV_LIGHT_WALLS)
-                                     
-                                     #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
-        
-        # if monster sees player...
-        if (_dungeon.player.x, _dungeon.player.y) in monster_view:
-            #logging.info('Player is in view of %s', self.owner.name)
-            
-            #notify player he's been seen...
-            if not self.last_see_player:
-                self.last_see_player = True
-                if (monster.x,monster.y) in _dungeon.visible_tiles:
-                    _dungeon.game.message(self.owner.name + ' notices you!', colors.orange)
-            
-            return self.take_fight()
-                
-        else:
-            self.last_see_player = False
-            act = randint(0,12)
-            if act == 0:
-                return self.take_fight() # move towards player
-            elif act < 4:
-                return self.take_flee() # move away from player
-            else:
-                return monster.fighter.speed # do nothing
 
 ### functions with  no class ###
 ### callback functions ###
