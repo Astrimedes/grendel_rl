@@ -14,6 +14,8 @@ import controls
 
 import time
 
+from substrings import strleft
+
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -75,6 +77,8 @@ class Game:
                 savefile['timestamps'] = self.timestamps
                 savefile['turn'] = self.dungeon.turn
                 savefile['start_time'] = self.dungeon.start_time
+                savefile['beowulf'] = self.dungeon.beowulf
+                savefile['generator'] = self.dungeon.generator
         else:
             logging.info("Dead: clearing save file...")
             shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
@@ -115,6 +119,8 @@ class Game:
                     self.timestamps = savefile['timestamps']
                     self.dungeon.turn = savefile['turn']
                     self.dungeon.start_time = savefile['start_time']
+                    self.dungeon.beowulf = savefile['beowulf']
+                    self.dungeon.generator = savefile['generator']
                     if self.dungeon.player.fighter.hp > 0:
                         self.state = constants.STATE_PLAYING
                     else:
@@ -318,8 +324,8 @@ class Game:
     def game_start(self):
 
         #tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
-        tdl.set_font('terminal16x16.png', greyscale=True)
-        self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Roguelike", 
+        tdl.set_font('terminal16x16.png', greyscale=False)
+        self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Grendel", 
                         fullscreen=False)
         self.map_console = tdl.Console(constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT)
         self.message_panel = tdl.Console(constants.MSG_PANEL_WIDTH, constants.MSG_PANEL_HEIGHT)
@@ -561,8 +567,8 @@ class Game:
     def get_obj_names_at(self, x, y):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
-        if names:
-            logging.info(str(names))
+        # if names:
+            # logging.info(str(names))
         names = ', '.join(names)  #join the names, separated by commas
         return names
         
@@ -904,41 +910,34 @@ class Game:
         tcolor = colors.green
         
         # time of day (dungeon turn)
-        title = 'Time'
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
+        self.drawtitle_stats('Time', y, fgcolor=tcolor)
+        # title = 'Time'
+        # xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
+        # self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
         y += 1
         # day, month, year
         self.status_panel.draw_str(x, y, self.dungeon.date_string, bg=None, fg=colors.light_grey)
         # time
         y += 1
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
         self.status_panel.draw_str(x, y, self.dungeon.time_string, bg=None, fg=colors.light_grey)
         
         # draw inventory counts
         # get dict of items (name: count)
         item_dict = self.dungeon.get_inv_count_dict()
         y += 4
-        title = 'Inventory'
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
+        self.drawtitle_stats('Inventory', y, fgcolor=tcolor)
         y += 1
-        title = '(press i to use)'
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.dark_grey)
+        self.drawtitle_stats('(press i to use)', y, fgcolor=colors.dark_grey)
         for k in sorted(item_dict.keys()):
             y += 1
-            logging.info(str(item_dict[k]))
             line = k + ': ' + str(item_dict[k])
             self.status_panel.draw_str(x, y, line, bg=None, fg=colors.light_grey)
         if len(item_dict) < 5:
             y += 5 - len(item_dict)
-    
+        
         #show player stats
-        y += 4
-        title = 'Grendel'
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
+        y += 1
+        self.drawtitle_stats('Grendel', y, fgcolor=tcolor)
         #show player's hp bar
         y += 1
         self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
@@ -951,20 +950,12 @@ class Game:
         y += 2
         stat = round(pfighter.power,1)
         diff = round(pfighter.power - constants.START_POWER,1)
-        # note, c = make_mod_text_color(diff)
-        # stat_msg = 'Str: ' + str(stat) + ' '
-        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        # self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
         self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Str', diff, constants.POWER_BONUS)
         
         # Toughness
         y += 1
         stat = round(pfighter.defense, 1)
         diff = round(pfighter.defense - constants.START_DEFENSE,1)
-        # note, c = make_mod_text_color(diff)
-        # stat_msg = 'Tough: ' + str(stat) + ' '
-        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        # self.status_panel.draw_str(x+len(stat_msg), y,  note, bg=None, fg=c)
         self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Tough', diff, constants.DEFENSE_BONUS)
         
         # Speed (inverse!)
@@ -972,33 +963,45 @@ class Game:
         y += 1
         stat =  round(round(1.0 + (1.0 - pfighter.move_speed()),2) * 100.0)
         diff =  stat - round(round(1.0 + (1.0 - constants.START_SPEED),2) * 100)
-        # note, c = make_mod_text_color(diff)
-        # stat_msg = 'Speed: ' + str(stat) + '% '
-        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        # self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
         self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Speed', diff, (-constants.SPEED_BONUS * 100))
         
         # Vision
         y += 1
         stat = round(self.dungeon.player.fov,1)
         diff = round(self.dungeon.player.fov - constants.START_VISION,1)
-        # note, c = make_mod_text_color(diff)
-        # stat_msg = 'Vision: ' + str(stat) + ' '
-        # self.status_panel.draw_str(x, y, stat_msg, bg=None, fg=colors.white)
-        # self.status_panel.draw_str(x+len(stat_msg), y, note, bg=None, fg=c)
         self.render_stat_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'Vision', diff, constants.VISION_BONUS)
+        
+        # Visible Enemies #
+        # get visible enemies first names...
+        enemy_names = [strleft(obj.name, ' the') for obj in self.dungeon.calc_visible_enemies()]
+        c = tcolor
+        y += 3
+        if enemy_names:
+            self.drawtitle_stats('Visible Enemies', y, fgcolor=tcolor)
+            y += 1
+            #self.status_panel.draw_str(x, y, ', '.join(enemy_names), fg=colors.yellow)
+            self.drawtitle_stats(', '.join(sorted(enemy_names)), y, fgcolor=colors.yellow)
+        else:
+            self.drawtitle_stats('Visible Enemies', y, fgcolor=colors.dark_grey)
+            y += 1
+            
         
         # enemies left!
         y = constants.STAT_PANEL_HEIGHT - 4
-        title = 'Enemies Left'
-        xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=tcolor)
+        self.drawtitle_stats('Enemies Left', y, fgcolor=tcolor)
         y += 1
-        title = str(self.dungeon.enemies_left)
+        self.drawtitle_stats(str(self.dungeon.enemies_left), y, fgcolor=colors.light_flame)
+        
+    def drawtitle_stats(self, title, y, fgcolor=colors.white, bgcolor=None):
+        # wrap multi line title
+        if len(title) > constants.STAT_PANEL_WIDTH - 2:
+            lines = textwrap.wrap(title, constants.STAT_PANEL_WIDTH - 2)
+            for i, l in enumerate(lines):
+                self.drawtitle_stats(l, y+i, fgcolor, bgcolor)
+            return
+    
         xpos = (constants.STAT_PANEL_WIDTH - len(title)) // 2
-        self.status_panel.draw_str(xpos, y, title, bg=None, fg=colors.light_flame)
-        
-        
+        self.status_panel.draw_str(xpos, y, title, fg=fgcolor, bg=bgcolor)
         
         
     def clear_obj_render(self):

@@ -24,9 +24,16 @@ from datetime import date
 
 from barbarian_names import barb_name
 
+# GLOBALS #
+# logging
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# ai states
+from enumerations import Enum
+states = Enum(['SLEEP', 'WANDER', 'FIGHT', 'FLEE'])
+
+# global dungeon instance
 _dungeon = None
                 
 """
@@ -140,7 +147,7 @@ Healing item
 class Heart(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(cast_heal, inv_description='(heals damage)')
-        GameObject.__init__(self, _dungeon, x, y, 'o', 'Heart',
+        GameObject.__init__(self, _dungeon, x, y, chr(3), constants.PART_HEALING,
             colors.flame, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
                  #fighter=None, ai=None, item=None):
@@ -160,13 +167,13 @@ Speed bonus item
 class Legs(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
-        GameObject.__init__(self, _dungeon, x, y, 'v', constants.PART_SPEED,
+        GameObject.__init__(self, _dungeon, x, y, chr(28), constants.PART_SPEED,
             colors.light_flame, item=itm)
             
 class Eyes(GameObject):
     def __init__(self, x=0, y=0):
         itm = Item(bonus_vision, inv_description='(+Vision,-Toughness)')
-        GameObject.__init__(self, _dungeon, x, y, '*', constants.PART_FOV,
+        GameObject.__init__(self, _dungeon, x, y, chr(248), constants.PART_FOV,
             colors.light_flame, item=itm)
             
 """
@@ -209,7 +216,6 @@ class Fighter:
             return self.speed
         
     def pass_time(self):
-        logging.info('%s fighter.pass_time()', self.owner.name)
         if self.owner.ai:
             t = self.move_speed()
             if self.owner.ai.pdistance <= constants.MIN_PDIST and self.owner.fighter.weapon:
@@ -315,7 +321,7 @@ class Player(GameObject):
         
         fighter_component.weapon = weapon
         
-        GameObject.__init__(self, dungeon, 0, 0, 'G', 'Grendel', constants.THRESH_COLORS[0], blocks=True, 
+        GameObject.__init__(self, dungeon, 0, 0, chr(2), 'Grendel', constants.THRESH_COLORS[0], blocks=True, 
                         fighter=fighter_component)
                         
         self.fov = constants.START_VISION
@@ -342,8 +348,10 @@ Weak enemy (GameObject)
 class Scout(GameObject):
     #Scout monster GameObject
     def __init__(self, dungeon, x, y):
-        barb_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
-            vision_range=constants.FOV_RADIUS_BAD)
+        #barb_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
+            #vision_range=constants.FOV_RADIUS_BAD)
+        
+        barb_ai = NPC()
             
         barb_fighter = Fighter(hp=9, defense=1, power=3, 
             speed=1, death_function=self.death)
@@ -358,7 +366,7 @@ class Scout(GameObject):
         # objects that drop upon death
         self.drop_objects = []
                  
-        GameObject.__init__(self, dungeon, x, y, 'd', barb_name() + ' the Scout', colors.dark_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 's', barb_name() + ' the Scout', colors.dark_orange, blocks=True, 
                  fighter=barb_fighter, ai=barb_ai, item=None)
                  
                  
@@ -394,7 +402,7 @@ class Scout(GameObject):
         self.dungeon.count_enemies()
         
         # check for 'boss summon'
-        if self.dungeon.enemies_left < 1:
+        if self.dungeon.enemies_left < constants.ENEMIES_FINAL:
             # summon beowulf!
             self.dungeon.create_Beowulf()
         
@@ -405,8 +413,9 @@ Strong enemy (GameObject)
 class Warrior(Scout):
     #Warrior monster GameObject
     def __init__(self, dungeon, x, y):
-        bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
-            vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
+        # bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
+            # vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
+        bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3)
         
         bt_fighter = Fighter(hp=20, defense=3, power=8,
             speed=1.5, death_function=self.death)
@@ -421,7 +430,7 @@ class Warrior(Scout):
         # objects that drop upon death
         self.drop_objects = []
         
-        GameObject.__init__(self, dungeon, x, y, 'D', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'W', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
 
@@ -540,6 +549,8 @@ class Dungeon:
             del _dungeon
         _dungeon = self
         
+        self.generator = None
+        
         self.game = game
     
         self.player = None
@@ -549,12 +560,15 @@ class Dungeon:
         self.visible_tiles = []
         self.level = 1
         
+        self.beowulf = False
+        
         # keeps track of turns passed (use monster/player speed to check when to act)
         self.start_time = constants.START_TIME + randint(0, 10800)
         self.turn = 0
         self.calc_date_time() #set initial time values
         
         self.combatants = []
+        self.visible_enemies = []
         
         self.enemies_left = 0
 
@@ -576,33 +590,32 @@ class Dungeon:
         # self.inventory.append(Legs().item)
         
     def create_Beowulf(self):
-        # select a position near the opposite edge of the map from player
-        xrange = (constants.MAP_WIDTH // 10)
-        if self.player.x > constants.MAP_WIDTH // 2:
-            xmin = 0
-            xmax = xrange + 1
-        else:
-            xmax = constants.MAP_WIDTH
-            xmin = xmax - xrange - 1
         
-        added = False
-        while not(added):
-            for y in range(constants.MAP_HEIGHT):
-                for x in range(xmin, xmax):
-                    if not self.is_blocked(x,y):
-                        # place beowulf!
-                        boss = Beowulf(self, x, y)
-                        self.objects.append(boss)
-                        # announce!
-                        self.game.message("From across the way you hear: I will avenge my kin, foul beast!", colors.light_violet)
-                        self.game.message("Your mightiest enemy, Beowulf has arrived!", colors.yellow)
-                        added = True
-                        break
-                if added:
+        if not(self.beowulf):
+            self.beowulf = True
+        
+            # select a position near the opposite edge of the map from player
+            xrange = (constants.MAP_WIDTH // 10)
+            if self.player.x > constants.MAP_WIDTH // 2:
+                xmin = 0
+                xmax = xrange + 1
+            else:
+                xmax = constants.MAP_WIDTH
+                xmin = xmax - xrange - 1
+            
+            added = False
+            while not(added):
+                y = randint(0, constants.MAP_HEIGHT-2)
+                x = randint(xmin, xmax)
+                if not self.is_blocked(x,y):
+                    # place beowulf!
+                    boss = Beowulf(self, x, y)
+                    self.objects.append(boss)
+                    # announce!
+                    self.game.message("From across the way you hear: I will avenge my kin, foul beast!", colors.light_violet)
+                    self.game.message("Your mightiest enemy, Beowulf has arrived!", colors.yellow)
+                    added = True
                     break
-                    
-        
-        
         
     def count_enemies(self):
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
@@ -613,6 +626,9 @@ class Dungeon:
     
         if self.map:
             del self.map
+            
+        if self.generator:
+            del self.generator
      
         #fill map with "blocked" tiles
         self.map = [[ Tile(True)
@@ -622,19 +638,18 @@ class Dungeon:
         rooms = []
         num_rooms = 0
         
-        
         monsters_left = constants.MONSTER_COUNT
         items_left = monsters_left // 2
         
         # generate layout
-        gen = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
+        self.generator = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
-                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=0,
-                random_spurs=0)
-        gen.gen_level()
+                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=5,
+                random_spurs=1)
+        self.generator.gen_level()
         
         # populate tiles
-        for row_num, row in enumerate(gen.level):
+        for row_num, row in enumerate(self.generator.level):
             for col_num, col in enumerate(row):
                 if col == 'floor':
                     t = self.map[col_num][row_num]
@@ -645,7 +660,7 @@ class Dungeon:
         # add items to rooms
         added_player = False
         while monsters_left > 0:
-            for i, new_room in enumerate(gen.room_list):
+            for i, new_room in enumerate(self.generator.room_list):
                 # only add player to first room
                 if i == 0:
                     if not added_player:
@@ -666,17 +681,27 @@ class Dungeon:
         # add items to monsters
         self.add_items_to_monsters(constants.ITEM_QTY)
         
+        # print layout of dungeon
+        self.generator.gen_tiles_level()
+        
     def add_items_to_monsters(self, num_items):
         monsters = [obj for obj in self.objects if obj.fighter and obj != self.player]
-    
+        max_items = num_items
         # give it an item to drop on death if there are items left
+        HEAL_MOD = 4 # every 4th item or so guaranteed to be heart
         monster = choice(monsters)
         while num_items > 0:
             monster = choice(monsters)
             add_items = True
+            # guaranteed healing...
+            if (max_items - num_items) % HEAL_MOD == 0:
+                itm = Heart(-1,-1)
+            else:
+                itm = None
             while add_items:
-                # choose item
-                itm = self.choose_item()
+                if not(itm):
+                    # choose random item
+                    itm = self.choose_item()
                 # add item to monster
                 if len(monster.drop_objects) > 0:
                     names = [itm.name for itm in monster.drop_objects]
@@ -693,9 +718,10 @@ class Dungeon:
                 else:
                     add_items = False
             
+            
 
     def choose_item(self):
-        itmtype = randint(0,4)
+        itmtype = randint(0,3)
         if itmtype == 0:
             itm = Legs(-1, -1)
         elif itmtype == 1:
@@ -704,8 +730,8 @@ class Dungeon:
             itm = Muscle(-1, -1)
         elif itmtype == 3:
             itm = Torso(-1, -1)
-        else:
-            itm = Heart(-1, -1)
+        # else:
+            # itm = Heart(-1, -1)
             
         return itm
                 
@@ -746,8 +772,17 @@ class Dungeon:
         #return the distance to another object
         return self.distance(game_obj.x, game_obj.y, other_game_obj.x, other_game_obj.y)
         
+    """
+    Tile distance between 2 points
+    """
     def distance(self, x1, y1, x2, y2):
-        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        return math.sqrt(self.distance2(x1,y1,x2,y2))
+    
+    """
+    Returns the squared tile distance between two points (saves a sqrt() if not needed)
+    """
+    def distance2(self, x1, y1, x2, y2):
+        return ((x2 - x1) ** 2) + ((y2 - y1) ** 2)
 
     def is_visible_tile(self, x, y):
      
@@ -781,7 +816,7 @@ class Dungeon:
         for obj in self.objects:
             if obj.fighter and not obj == from_gameobj and (obj.x, obj.y) in self.visible_tiles:
                 #calculate distance between this object and from_gameobj
-                dist = self.distance_to(from_gameobj, obj)
+                dist = self.distance2(from_gameobj.x, from_gameobj.y, obj.x, obj.y)
                 if dist < closest_dist:  #it's closer, so remember it
                     closest_enemy = obj
                     closest_dist = dist
@@ -815,7 +850,7 @@ class Dungeon:
         #vector from this object to the target, and distance
         dx = target_x - game_obj.x
         dy = target_y - game_obj.y
-        distance = math.sqrt(dx ** 2 + dy ** 2)
+        distance = max(math.sqrt(dx ** 2 + dy ** 2),1)
  
         #normalize it to length 1 (preserving direction), then round it and
         #convert to integer so the movement is restricted to the map grid
@@ -852,10 +887,8 @@ class Dungeon:
         
         moved = False
  
-        #Check if the path exists, and in this case, also the path is shorter than 25 tiles
-        #The path size matters if you want the monster to use alternative longer paths (for example through other rooms) if for example the player is in a corridor
-        #It makes sense to keep path size relatively low to keep the monsters from running around the map if there's an alternative path really far away        
-        if not tcod.path_is_empty(my_path) and tcod.path_size(my_path) < max_pathsize:
+        #Check if the path exists     
+        if not(tcod.path_is_empty(my_path)):
             #Find the next coordinates in the computed full path
             x, y = tcod.path_walk(my_path, True)
             if not (x is None or y is None) and not self.is_blocked(x, y):
@@ -892,10 +925,15 @@ class Dungeon:
         
         turns_used = 0
         
+        # recalc visible enemies when player moves or attacks
+        self.calc_visible_enemies()
+        
         #attack if target found, move otherwise
         if target is not None:
             self.player.fighter.attack(target)
             turns_used = self.player.fighter.attack_speed()
+            # make noise!
+            self.make_noise(x, y, 8)
         else:
             if self.move(self.player, dx, dy):
                 turns_used = self.player.fighter.move_speed()
@@ -904,6 +942,12 @@ class Dungeon:
 
     def player_wait(self):
         self.game.message('You wait.')
+        
+    def make_noise(self, x, y, volume):
+        # find all monsters
+        monsters = [obj.ai for obj in self.objects if obj.ai]
+        for m in monsters:
+            m.hear_noise(x,y,volume)
         
     def ai_act(self, turns_passed):
         # sort player inventory
@@ -915,18 +959,21 @@ class Dungeon:
         
         # date / time strings from turn count
         self.calc_date_time()
-    
-        # determine which monsters player is near or in combat with (ai uses in decisions)
-        self.combatants = []
-        fighters = [obj.fighter for obj in self.objects if obj.fighter]
-        for ftr in fighters:
-            if ftr != self.player.fighter and self.distance_to(_dungeon.player, ftr.owner) < 3:
-                self.combatants.append(ftr)
         
         # ai acts based on current turns passed
-        for ftr in fighters:
+        for ftr in [obj.fighter for obj in self.objects if obj.fighter]:
             # ai will take turns, player will only update last_turn counter
             ftr.pass_time()
+            
+        # recalc visible enemies
+        self.calc_visible_enemies()   
+        
+        # determine which monsters player is near or in combat with (ai uses in decisions)
+        self.combatants.clear()
+        fighters = [obj.fighter for obj in self.visible_enemies if obj.fighter]
+        for ftr in fighters:
+            if ftr != self.player.fighter and self.distance2(_dungeon.player.x, _dungeon.player.y, ftr.owner.x, ftr.owner.y) < 9:
+                self.combatants.append(ftr)
             
     def calc_date_time(self):
         # time of day (dungeon turn)
@@ -952,6 +999,12 @@ class Dungeon:
             self.objects.remove(item.owner)
             self.game.message('You picked up ' + item.owner.name + '!', colors.green)
             
+            
+    def calc_visible_enemies(self):
+        del self.visible_enemies
+        self.visible_enemies = [obj for obj in self.objects if (obj.x, obj.y) in self.visible_tiles and obj.fighter and obj != self.player]
+        return self.visible_enemies
+            
     def get_inv_count_dict(self):
         d = dict()
         for itm in self.inventory:
@@ -975,6 +1028,386 @@ class Dungeon:
 """
 Monster AI
 """
+
+class NPC:
+    def __init__(self, hearing = 0.1, laziness = 0.2, 
+            vision_range = constants.START_VISION, flee_health=0.44, flee_chance=0.7):
+        
+        self.owner = None
+        
+        self.fov_radius = vision_range
+        
+        # flee thresholds
+        self.flee_health = flee_health
+        self.flee_chance = flee_chance
+    
+        # begin sleeping
+        self.state = states.SLEEP
+        self.last_state = states.SLEEP
+        self.state_turns = 0 # how many turns current state has been active
+        
+        # distance to player at last calculation
+        self.pdistance = 0
+        
+        # turn count last time player was attacked
+        self.last_attack_turn = -1
+        
+        # visible tiles
+        self.view = None
+        
+        # last known player position
+        self.last_px = None
+        self.last_py = None
+        
+        # last target position (while wandering)
+        self.target_x = None
+        self.target_y = None
+        
+        # hearing chance (to wake up or be alerted that player is near)
+        self.hearing = hearing
+        
+        # chance to fall asleep
+        self.laziness = laziness
+        
+        
+    """
+    Whether the player is currently in view of the monster
+    """
+    def player_in_view(self):
+        if (self.view):
+            visible = (_dungeon.player.x, _dungeon.player.y) in self.view
+            if visible:
+                self.last_px = _dungeon.player.x
+                self.last_py = _dungeon.player.y
+            return visible
+        else:
+            return False
+        
+    """
+    Take a turn, return number of turns used
+    """
+    def take_turn(self):
+        #a basic monster takes its turn.
+        monster = self.owner
+        
+        # monster pathfinding
+        self.pdistance = _dungeon.distance_to(monster, _dungeon.player)
+        
+        logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
+        
+        self.view = None
+        
+        # determine if it falls asleep while player far away
+        if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
+            if self.state_turns > 20 and randfloat(0,1) <= self.laziness:
+                self.change_state(states.SLEEP)
+        # if monster sees player... 
+        elif self.pdistance < constants.MAX_HEAR_DIST:
+            # fov (store visible tiles)
+            self.view = tdl.map.quickFOV(monster.x, monster.y, is_visible_tile, radius = self.fov_radius)
+            # if player could be seen...
+            if self.player_in_view():
+                # strong chance to wake from sleep
+                if self.state == states.SLEEP:
+                    if randfloat(0,1) < 0.9:
+                        self.change_state(states.FIGHT)
+                # fight or flee player in view...
+                else:
+                    if self.pdistance > constants.MIN_PDIST and len(_dungeon.combatants) < 2 and self.owner.fighter.hp / self.owner.fighter.max_hp < self.flee_health and (self.state == states.FLEE or randfloat(0,1) <= self.flee_chance):
+                        self.change_state(states.FLEE)
+                    else:
+                        self.change_state(states.FIGHT)
+                    
+        # record player position if visible
+        if not(self.state == states.SLEEP) and self.player_in_view():
+            self.last_px = _dungeon.player.x
+            self.last_py = _dungeon.player.y
+                    
+        # count turns in state
+        self.state_turns += 1
+        
+        if self.state == states.SLEEP:
+            return self.take_sleep()
+            
+        if self.state == states.WANDER:
+            return self.take_movetarget()
+            
+        if self.state == states.FIGHT:
+            return self.take_fight()
+            
+        if self.state == states.FLEE:
+            return self.take_flee()
+            
+    """
+    Sleep for one turn
+    """
+    def take_sleep(self):
+        return self.owner.fighter.move_speed()
+        
+    """
+    Flee from player
+    """
+    def take_flee(self):
+        # determine how in danger we are...
+        if not self.player_in_view() and self.state_turns > 20 and self.pdistance > 20:
+            # target a nearby ally to move towards
+            self.set_ally_target()
+        else:
+            self.set_flee_target()
+        # else:
+            # # try to run directly away from player in view
+            # if not(self.set_flee_target()) and self.pdistance <= constants.MIN_PDIST:
+                # # fight for one turn if we can't run away
+                # return self.take_fight()
+                
+        # move towards target
+        return self.take_movetarget()
+                
+        
+    """
+    Move towards target_x and target_y
+    """
+    def take_movetarget(self):
+        # do we need a new target?
+        if not(self.target_x and self.target_y) or (self.owner.x,self.owner.y) == (self.target_x,self.target_y):
+            # set random wander dest
+            if self.state == states.WANDER:
+                self.set_wander_target()
+            # flee...
+            if self.state == states.FLEE:
+                # run away from player
+                if not(self.set_flee_target()):
+                    # find tougher ally if possible
+                    self.set_ally_target()
+                    
+                    
+        # if we still don't have a target, set randomly to wander
+        if not(self.target_x and self.target_y):
+            self.set_wander_target()
+            
+        # now we should have target coordinates...
+        _dungeon.move_astar(self.owner, self.target_x, self.target_y, 9999)
+        
+        return self.owner.fighter.move_speed()
+        
+    """
+    Set target_x and target_y to an ally
+    """
+    def set_ally_target(self, max_dist=40):
+        x = None
+        y = None
+        closest = 99999
+        for obj in _dungeon.objects:
+            if obj.fighter and not obj == self.owner and not obj == _dungeon.player:
+                dist = _dungeon.distance2(self.owner.x, self.owner.y, obj.x, obj.y)
+                if obj.fighter.hp > self.owner.fighter.max_hp:
+                    dist -= 12
+                if dist < closest:
+                    closest = dist
+                    x = obj.x
+                    y = obj.y
+                
+        if closest < max_dist**2 and (x and y):
+            self.target_x = obj.x
+            self.target_y = obj.y
+            return True
+        else:
+            return False
+            
+    def set_flee_target(self):
+        # run opposite direction of player
+        direction = _dungeon.get_direction(self.owner, self.last_px, self.last_py)
+        xdir = -direction[0]
+        ydir = -direction[1]
+        # cast ray out away from player, path where you can run the furthest is chosen
+        # check individual paths for 'winner' of most clear squares
+        tries = 0
+        turn_clockwise = choice([True,False])
+        PATH_LENGTH = 8
+        best_path = None
+        most_clear = 0
+        best_idx = 0
+        valid = False
+        _xdir = xdir
+        _ydir = ydir
+       
+        path = None
+        while tries < 8:
+            tries += 1
+            clear = 0
+            # check a path that starts 1 square away from monster in flee direction
+            x = self.owner.x + _xdir
+            y = self.owner.y + _ydir
+            # path extends to 
+            path = tdl.map.bresenham(x, y, x + (_xdir*PATH_LENGTH), y + (_ydir*PATH_LENGTH))
+            i = 0
+            pdist = _dungeon.distance_to(self.owner, _dungeon.player)
+            for i in range(0,len(path)):
+                pt = path[i]
+                blocked = _dungeon.is_blocked(pt[0], pt[1])
+                if pt and not(blocked) and (i == 0 or pdist >= 2):
+                    if i < len(path)-1:
+                        pt2 = path[i+1]
+                        if not(_dungeon.is_blocked(pt2[0], pt2[1])):
+                            clear += 1 #weight tiles that have another clear tile in front of them
+                    # weight tiles by distance from player early on in path
+                    clear += 1 + (pdist * 2) - (i//2)
+                else:
+                    break
+                #set new best
+            if clear > most_clear:
+                if not best_path is None:
+                    tcod.path_delete(best_path)
+            
+                best_path = path
+                most_clear = clear
+                best_idx = i
+                xdir = _xdir
+                ydir = _ydir
+                valid = True
+                #logging.info('%s Path: %s', self.owner.name, best_path)
+            else:
+                # free path from memory
+                if not path is None:
+                    tcod.path_delete(path)
+                    
+            # rotate the direction for next iteration
+            pt = (_xdir, _ydir)
+            (_xdir,_ydir) = rotate_pt(pt, turn_clockwise=turn_clockwise)
+        
+        if valid:
+            self.target_x = self.owner.x + xdir
+            self.target_y = self.owner.y + ydir
+            tcod.path_delete(best_path)
+            return True
+        else:
+            self.target_x = None
+            self.target_y = None
+            # return False if no good flee option could be found
+            return False
+    
+            
+    """
+    Make a noise at position, monster may awake if sleeping or decide to check the noise out if wandering.
+    noise_strength is expected to be a float in the range of 0 -> constants.MAX_HEAR_DIST (larger = louder)
+    """
+    def hear_noise(self, noise_x, noise_y, noise_strength):
+        dist = max(_dungeon.distance(self.owner.x, self.owner.y, noise_x, noise_y),1)
+        if dist < constants.MAX_HEAR_DIST:
+            if self.hearing >= (noise_strength / dist):
+                if self.state == states.SLEEP:
+                    self.change_state(states.WANDER)
+                    self.target_x = noise_x
+                    self.target_y = noise_y
+                elif self.state == states.WANDER:
+                    if _dungeon.distance(self.owner.x, self.owner.y, self.target_x, self.target_y) > dist:
+                        # set new target to noise location
+                        self.target_x = noise_x
+                        self.target_y = noise_y
+                
+                
+    def change_state(self, new_state):
+        if self.state == new_state:
+            return False
+        
+        if new_state in states.all():
+        
+            logging.info('AI change to %s from %s (%s)', states.nameof(new_state), states.nameof(self.state), self.owner.name)
+            
+            self.last_state = self.state
+            self.state = new_state
+            
+            self.state_turns = 0
+            self.target_x = None
+            self.target_y = None
+            
+            if self.state == states.WANDER:
+                self.set_wander_target()
+            
+        else:
+            raise ValueError('Invalid State attempted!', new_state)
+            
+        return True
+        
+    """
+    Set a new random patrol target (tries to pick places on 'opposite side' of dungeon)
+    """
+    def set_wander_target(self):
+        # where are we now...
+        # x pos
+        xcenter = constants.MAP_WIDTH // 2
+        xdir = randint(-1,1)
+        rmax = 4
+        r = randint(0,rmax)
+        if self.owner.x > xcenter and r < rmax:
+            xdir = -1
+        elif self.owner.x < xcenter and r < rmax:
+            xdir = 1
+        # pick 'x area' of dungeon
+        if xdir == -1:
+            xmin = 0
+            xmax = round(constants.MAP_WIDTH * 0.33)
+        elif xdir == 1:
+            xmin = round(constants.MAP_WIDTH * 0.66)
+            xmax = constants.MAP_WIDTH - 1
+        else:
+            xmin = round(constants.MAP_WIDTH * 0.33)
+            xmax = round(constants.MAP_WIDTH * 0.66)
+        # y pos
+        ycenter = constants.MAP_HEIGHT // 2
+        ydir = randint(-1,1)
+        rmax = 4
+        r = randint(0,rmax)
+        if self.owner.y > ycenter and r < rmax:
+            ydir = -1
+        elif self.owner.y < ycenter and r < rmax:
+            ydir = 1
+        # pick 'y area' of dungeon
+        if ydir == -1:
+            ymin = 0
+            ymax = round(constants.MAP_HEIGHT * 0.33)
+        elif ydir == 1:
+            ymin = round(constants.MAP_HEIGHT * 0.66)
+            ymax = constants.MAP_HEIGHT - 1
+        else:
+            ymin = round(constants.MAP_HEIGHT * 0.33)
+            ymax = round(constants.MAP_HEIGHT * 0.66)
+        
+        # check for blocked
+        invalid = True
+        while invalid:
+            # new coordinates
+            x = randint(xmin, xmax)
+            y = randint(ymin, ymax)
+            invalid = _dungeon.is_blocked(x,y)
+            
+        # set new coordinates
+        if not(invalid):
+            self.target_x = x
+            self.target_y = y
+            
+    # Fight! (return turns used)
+    def take_fight(self):
+        #move towards player if not close enough to strike
+        if self.pdistance > constants.MIN_PDIST:
+        
+            # check for state change to wander
+            if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+                self.change_state(states.WANDER)
+                return self.take_movetarget()
+        
+            #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
+            _dungeon.move_astar(self.owner, self.last_px, self.last_py)
+            #return turns used
+            return self.owner.fighter.move_speed()
+        else:
+            #close enough, attack!
+            self.owner.fighter.attack(_dungeon.player)
+            #track turn
+            self.last_attack_turn = _dungeon.turn
+            return self.owner.fighter.attack_speed()
+
+
 class BasicMonster:
 
     FLEE = 'flee'
@@ -1012,18 +1445,13 @@ class BasicMonster:
         
         logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
         
-        # last enemy should find the player
-        if self.dungeon.enemies_left == 1:
-            if randint(0,10) < 10:
-                return self.take_fight() # move towards player
-        
-        # ignore if monster too far away
+        # do nothing if player too far away
         if self.pdistance > constants.DEFAULT_PATHSIZE:
             self.last_action = ''
             self.last_see_player = False
             return monster.fighter.speed
         
-        # monster fov if near enough to player
+        # fov if near enough to player
         monster_view = tdl.map.quickFOV(monster.x, monster.y,
                                      is_visible_tile, radius = self.fov_radius)
                                      
@@ -1060,9 +1488,9 @@ class BasicMonster:
         else:
             self.last_see_player = False
             act = randint(0,12)
-            if act == 0:
+            if act <= 4:
                 return self.take_fight() # move towards player
-            elif act < 4:
+            elif act <= 8:
                 return self.move_towards_ally(constants.DEFAULT_PATHSIZE) # move towards allies
             else:
                 return monster.fighter.speed # do nothing
@@ -1102,9 +1530,9 @@ class BasicMonster:
             # path extends to 
             path = tdl.map.bresenham(x, y, x + (_xdir*PATH_LENGTH), y + (_ydir*PATH_LENGTH))
             i = 0
+            pdist = _dungeon.distance_to(self.owner, _dungeon.player)
             for i in range(0,len(path)):
                 pt = path[i]
-                pdist = _dungeon.distance_to(self.owner, _dungeon.player)
                 if pt and _dungeon.is_visible_tile(pt[0], pt[1]) and (i == 0 or pdist >= 2):
                     if i < len(path)-1:
                         pt2 = path[i+1]
@@ -1144,21 +1572,21 @@ class BasicMonster:
         return self.take_fight()
         
         
-    def move_towards_ally(self, max_dist=20):
+    def move_towards_ally(self, max_dist=40):
         x = None
         y = None
         closest = 999
         for obj in _dungeon.objects:
             if obj.fighter and not obj == self.owner and not obj == _dungeon.player:
-                dist = _dungeon.distance_to(self.owner, obj)
+                dist = _dungeon.distance2(self.owner.x, self.owner.y, obj.x, obj.y)
                 if obj.fighter.hp > self.owner.fighter.max_hp:
-                    dist -= 6
+                    dist -= 12
                 if dist < closest:
                     closest = dist
                     x = obj.x
                     y = obj.y
                 
-        if closest < max_dist:
+        if closest < max_dist**2:
             _dungeon.move_astar(self.owner, x, y)
         else:
             _dungeon.move_towards(self.owner, _dungeon.player.x, _dungeon.player.y)
@@ -1190,13 +1618,13 @@ class BasicMonster:
 """
 Monster AI (tough monster)
 """
-class BossMonster(BasicMonster):
+class BossMonster(NPC):
     #AI for boss monster
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
         flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
         
-        BasicMonster.__init__(self, dungeon, fov_algo, vision_range, 
-            flee_health, flee_chance, curses)
+        NPC.__init__(self, hearing = 0.9, laziness = 0.05, 
+            vision_range = constants.START_VISION+1, flee_health=0.08, flee_chance=0.1)
             
         self.leader = True
         
@@ -1205,7 +1633,7 @@ class BossMonster(BasicMonster):
         monster = self.owner
         
         # monster pathfinding
-        self.pdistance = self.dungeon.distance_to(monster, self.dungeon.player)
+        self.pdistance = self.dungeon.distance_to(monster, _dungeon.player)
         
         logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
         
@@ -1226,7 +1654,7 @@ class BossMonster(BasicMonster):
                                      #fov='PERMISSIVE', radius=7.5, lightWalls=True, sphere=True)
         
         # if monster sees player...
-        if (self.dungeon.player.x, self.dungeon.player.y) in monster_view:
+        if (_dungeon.player.x, _dungeon.player.y) in monster_view:
             #logging.info('Player is in view of %s', self.owner.name)
             
             #notify player he's been seen...

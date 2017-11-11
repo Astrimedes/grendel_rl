@@ -2,8 +2,8 @@
 import colors
 
 #actual size of the window
-SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 54
+SCREEN_WIDTH = 70 # was 80
+SCREEN_HEIGHT = 56
 TILE_SIZE = 16
 
 #size of the map
@@ -34,20 +34,24 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 10
+ROOM_MAX_SIZE = 8
 ROOM_MIN_SIZE = 4
-MAX_ROOMS = 36
+MAX_ROOMS = 32
 
 # monster qty
 MONSTER_COUNT = 26
 MONSTER_TOUGH = 0.34
 MONSTER_WEAK = 1.0 - MONSTER_TOUGH
+ENEMIES_FINAL = MONSTER_COUNT // 4
 
 # ITEMS
-ITEM_QTY = MONSTER_COUNT // 2
+ITEM_QTY = round(MONSTER_COUNT * 0.75)
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
+
+#distance at which monsters can be 'awaken' depending on their hearing and noise level
+MAX_HEAR_DIST = 25
 
 #spell values
 HEAL_AMOUNT = 18
@@ -153,6 +157,7 @@ PART_POWER = 'Muscle'
 PART_DEFENSE = 'Torso'
 PART_SPEED = 'Leg'
 PART_FOV = 'Eye'
+PART_HEALING = 'Heart'
 
 # indicates 1 tile away
 MIN_PDIST = 1.415
@@ -163,12 +168,12 @@ TIME_SUBTRACT_YEARS = 1522
 
 # stat bonus / penalty
 ### FLESH POWERUPS ###
-PEN_FRAC = 0.75
+PEN_FRAC = 0.8
 SPEED_BONUS = -0.1
 SPEED_PENALTY = -SPEED_BONUS * PEN_FRAC
 POWER_BONUS = 4
 POWER_PENALTY = -POWER_BONUS * PEN_FRAC
 VISION_BONUS = 1
 VISION_PENALTY = -VISION_BONUS * PEN_FRAC
-DEFENSE_BONUS = 2
+DEFENSE_BONUS = 1
 DEFENSE_PENALTY = -DEFENSE_BONUS * PEN_FRAC

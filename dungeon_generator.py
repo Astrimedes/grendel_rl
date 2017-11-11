@@ -37,12 +37,27 @@ class Generator():
         self.tiles_level = []
  
     def gen_room(self):
+        # x, y, w, h = 0, 0, 0, 0
+ 
+        # w = random.randint(self.min_room_xy, self.max_room_xy)
+        # h = random.randint(self.min_room_xy, self.max_room_xy)
+        # x = random.randint(2, (self.width - w - 2))
+        # y = random.randint(2, (self.height - h - 2))
+ 
+        # return [x, y, w, h]
+        return self.gen_room_in_region(region_x=0, region_y=0, region_w=self.width, region_h=self.height)
+        
+    def gen_room_in_region(self, region_x, region_y, region_w, region_h):
         x, y, w, h = 0, 0, 0, 0
  
         w = random.randint(self.min_room_xy, self.max_room_xy)
         h = random.randint(self.min_room_xy, self.max_room_xy)
-        x = random.randint(1, (self.width - w - 1))
-        y = random.randint(1, (self.height - h - 1))
+        
+        minx = region_x+1
+        miny = region_y+1
+        
+        x = random.randint(minx, (region_x + region_w - w - 1))
+        y = random.randint(miny, (region_y + region_h - h - 1))
  
         return [x, y, w, h]
  
@@ -290,23 +305,39 @@ class Generator():
             self.level.append(['stone'] * self.width)
         self.room_list = []
         self.corridor_list = []
+        
+        # divide the dungeon up into 4 'regions' to generate rooms inside of
+        regions = []
+        hw = self.width//2
+        hh = self.height//2
+        regions.append((0, 0, hw, hh))
+        regions.append((0, hh, hw, hh))
+        regions.append((hw, hh, hw, hh))
+        regions.append((hw, 0, hw, hh))
  
-        max_iters = self.max_rooms * 5
- 
-        for a in range(max_iters):
-            tmp_room = self.gen_room()
- 
-            if self.rooms_overlap or not self.room_list:
-                self.room_list.append(tmp_room)
-            else:
-                tmp_room = self.gen_room()
-                tmp_room_list = self.room_list[:]
- 
-                if self.room_overlapping(tmp_room, tmp_room_list) is False:
-                    self.room_list.append(tmp_room)
- 
-            if len(self.room_list) >= self.max_rooms:
-                break
+        # start generating rooms in each region
+        max_region_rooms = self.max_rooms // 4
+        max_iters = max_region_rooms * 5
+        
+        while len(self.room_list) < self.max_rooms:
+            for r in regions:
+                rr = 0
+                for a in range(max_iters):
+                    tmp_room = self.gen_room_in_region(r[0], r[1], r[2], r[3])
+         
+                    if self.rooms_overlap or not self.room_list:
+                        self.room_list.append(tmp_room)
+                        rr += 1
+                    else:
+                        tmp_room = self.gen_room_in_region(r[0], r[1], r[2], r[3])
+                        tmp_room_list = self.room_list[:]
+         
+                        if not(self.room_overlapping(tmp_room, tmp_room_list)):
+                            self.room_list.append(tmp_room)
+                            rr += 1
+         
+                    if rr >= max_region_rooms:
+                        break
  
         # connect the rooms
         for a in range(len(self.room_list) - 1):
@@ -350,8 +381,8 @@ class Generator():
                             min(x2, x3) + width] = 'floor'
  
         # paint the walls
-        for row in range(1, self.height - 1):
-            for col in range(1, self.width - 1):
+        for row in range(0, self.height - 1):
+            for col in range(0, self.width - 1):
                 if self.level[row][col] == 'floor':
                     if self.level[row - 1][col - 1] == 'stone':
                         self.level[row - 1][col - 1] = 'wall'
