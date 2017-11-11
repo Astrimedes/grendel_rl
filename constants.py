@@ -3,7 +3,7 @@ import colors
 
 #actual size of the window
 SCREEN_WIDTH = 70 # was 80
-SCREEN_HEIGHT = 56
+SCREEN_HEIGHT = 52
 TILE_SIZE = 16
 
 #size of the map

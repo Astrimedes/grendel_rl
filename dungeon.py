@@ -24,6 +24,10 @@ from datetime import date
 
 from barbarian_names import barb_name
 
+from substrings import strleft_back
+from substrings import strright_back
+from substrings import format_list
+
 # GLOBALS #
 # logging
 import logging
@@ -377,15 +381,16 @@ class Scout(GameObject):
             choice([' dies!', 
             ' is destroyed!', 
             " dies screaming!"]), colors.orange)
-                
-        for itm in self.drop_objects:
-            # give it this position
-            itm.x = self.x
-            itm.y = self.y
-            # add to dungeon
-            _dungeon.objects.append(itm)
+            
+        if self.drop_objects:
+            for itm in self.drop_objects:
+                # give it this position
+                itm.x = self.x
+                itm.y = self.y
+                # add to dungeon
+                _dungeon.objects.append(itm)
             # announce
-            _dungeon.game.message('You spot intact ' + itm.name + ' in ' + self.name + "'s fresh corpse!", colors.light_orange)
+            _dungeon.game.message('You see ' + format_list([itm.name for itm in self.drop_objects]) + ' in ' + self.name + "'s corpse!", colors.light_orange)
                 
         # transform to corpse
         self.name = 'corpse of ' + self.name
@@ -989,15 +994,15 @@ class Dungeon:
         self.objects.remove(game_obj)
         self.objects.insert(0, game_obj)
     
-    def pick_up(self, item):
+    def pick_up(self, items):
         #add to the player's inventory and remove from the map
-        if len(self.inventory) >= 26:
-            self.game.message('Your inventory is full, cannot pick up ' + 
-                    item.owner.name + '.', colors.red)
-        else:
-            self.inventory.append(item)
-            self.objects.remove(item.owner)
-            self.game.message('You picked up ' + item.owner.name + '!', colors.green)
+        for item in items:
+            self.inventory.append(item.item)
+            self.objects.remove(item)
+        
+        #msg
+        text = format_list([item.name for item in items])
+        self.game.message('You picked up: ' + text + '!', colors.green)
             
             
     def calc_visible_enemies(self):

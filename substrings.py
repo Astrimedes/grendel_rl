@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 """
 Extract the word_count number of words (L to R) using separator sep
 """
@@ -14,7 +17,7 @@ def extract_words(text, word_count, sep=' '):
     return ''
     
 """
-Return the string to the left of the first occurrence (L to R) of the substring
+Return the string to the Left of the FIRST occurrence (L to R) of the substring
 """
 def strleft(text, substring):
     #index of substr
@@ -26,3 +29,76 @@ def strleft(text, substring):
                 #slice to just before substr
                 return text[0:i-len(substring)+1]
     return text
+    
+"""
+Return the string to the Right of the FIRST occurrence (L to R) of the substring
+"""
+def strright(text, substring):
+    #index of substr
+    idx_match = 0
+    for i in range(0, len(text)):
+        if text[i] == substring[idx_match]:
+            idx_match += 1
+            if idx_match >= len(substring):
+                #slice to after substr
+                return text[i+1:len(text)]
+    return text
+    
+"""
+Return the string to the Right of the LAST occurrence (L to R) of the substring
+"""
+def strright_back(text, substring):
+    #index of substr
+    idx_match = len(substring)-1
+    for i in range(len(text)-1, -1, -1):
+        if text[i] == substring[idx_match]:
+            idx_match -= 1
+            if idx_match < 0:
+                #slice to after substr
+                return text[i+len(substring):len(text)]
+    return text
+    
+"""
+Return the string to the Left of the LAST occurrence (L to R) of the substring
+"""
+def strleft_back(text, substring):
+    #index of substr
+    idx_match = len(substring)-1
+    for i in range(len(text)-1, -1, -1):
+        if text[i] == substring[idx_match]:
+            idx_match -= 1
+            if idx_match < 0:
+                #slice to just before substr
+                return text[0:i]
+    return text
+    
+"""
+Returns a string with items listed as '1, 2, and 3'
+"""
+def format_list(strings):
+    if len(strings) > 1:
+        text = ', '.join(strings)
+        return strleft_back(text, ', ') + ', and ' + strright_back(text, ', ')
+    else:
+        return strings[0]
+
+"""
+Tests
+"""
+if __name__ == '__main__':
+    text = 'Dude the First the Last'
+    sub = ' the '
+    logging.info("strleft('%s', '%s') = %s", text, sub, "'" + strleft(text, sub) + "'")
+    logging.info("strleft_back('%s', '%s') = %s", text, sub, "'" + strleft_back(text, sub) + "'")
+    logging.info("strright('%s', '%s') = %s", text, sub, "'" + strright(text, sub) + "'")
+    logging.info("strright_back('%s', '%s') = %s", text, sub, "'" + strright_back(text, sub) + "'")
+    
+    text = 'first, second, third, fourth'
+    sub = ', '
+    logging.info("strleft_back('%s', '%s') + ', and' + strright_back('%s', '%s') = %s",
+        text, sub, text, sub, strleft_back(text, sub) + ', and ' + strright_back(text, sub))
+        
+    list = ['first','second','third']
+    logging.info("format_list(%s) = %s", list, format_list(list))
+        
+    

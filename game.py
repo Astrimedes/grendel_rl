@@ -15,6 +15,7 @@ import controls
 import time
 
 from substrings import strleft
+from substrings import format_list
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -229,7 +230,8 @@ class Game:
                         if moved or picked_up:
                             names = self.get_item_names_at(self.dungeon.player.x, self.dungeon.player.y)
                             if names:
-                                self.message('You see tasty flesh here: ' + names + '. Press g to take it.')
+                                text = format_list(names)
+                                self.message('You see: ' + text + '. Press g to take.')
                         
                         #let monsters take their turn: during play state, when a turn has passed
                         if action.turns_used > 0:
@@ -578,14 +580,8 @@ class Game:
     def get_item_names_at(self, x, y):
         #create a list with the names of all Items at the mouse's coordinates and in FOV
         items = self.get_items_at(x, y)
-        hasitems = len(items) > 0
-        names = []
-        for itm in items:
-            if itm:
-                hasitems = True
-                names.append(itm.name().capitalize())
-        if hasitems:
-            return ', '.join(names)
+        if len(items) > 0:
+            return [itm.name() for itm in items]
         else:
             return None
             
@@ -727,10 +723,9 @@ class Game:
                 
         if len(found) < 1:
             return False
-                
+        
         turn_action.turns_used = self.dungeon.player.fighter.speed
-        for obj in found:
-            self.dungeon.pick_up(obj.item)
+        self.dungeon.pick_up(found)
                 
         return True
                 
