@@ -2,8 +2,8 @@
 import random
 
 _prefixes = ('Mo','Here','Sig','Ae','Wig','Uth','Thr','Kur','Ro','Ar','Co','Wulf','Kor','Hroth','Be','Tho','Yor','Gor','Go','Bo','Be','Hun','Un','Ec','Hy')
-_suffixes = ('gar','nan','gorn','wor','tor','orn','yth','rak','laf','son','th','mund','hulf','ere','wulf','gd','eow','mond')
-_middles = ('o','e','sch','fer','gel','gth','ek','')
+_suffixes = ('gar','nan','gorn','wor','tor','orn','yth','rak','laf','son','th','mund','hulf','ere','wulf','gd','eow','mond','rth')
+_middles = ('o','e','sch','fer','gel','gth','ek','thy','')
 
 middle_chance = 0.4
 
