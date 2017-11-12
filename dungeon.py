@@ -13,7 +13,7 @@ from random import choice
 from random import random
 from random import uniform as randfloat
 
-import dungeon_generator
+import dungeon_generator as dun_gen
 
 import numpy as np
 
@@ -649,7 +649,7 @@ class Dungeon:
         items_left = monsters_left // 2
         
         # generate layout
-        self.generator = dungeon_generator.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
+        self.generator = dun_gen.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
                 max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=5,
                 random_spurs=1)
@@ -658,7 +658,7 @@ class Dungeon:
         # populate tiles
         for row_num, row in enumerate(self.generator.level):
             for col_num, col in enumerate(row):
-                if col == 'floor':
+                if col == dun_gen.tiles.FLOOR:
                     t = self.map[col_num][row_num]
                     t.blocked = False
                     t.block_sight = False
@@ -671,8 +671,7 @@ class Dungeon:
                 # only add player to first room
                 if i == 0:
                     if not added_player:
-                        self.player.x = new_room[0]
-                        self.player.y = new_room[1]
+                        self.player.x, self.player.y = new_room.center()
                         added_player = True
                     continue
             
@@ -753,8 +752,8 @@ class Dungeon:
                 tries += 1
             
                 #choose random spot for this monster
-                x = randint(room[0] - room[2] + 1, room[0] + room[2] - 1)
-                y = randint(room[1] - room[3] + 1, room[1] + room[3] - 1)
+                x = randint(room.x - room.w + 1, room.x + room.w - 1)
+                y = randint(room.y - room.h + 1, room.y + room.h - 1)
          
                 #only place it if the tile is not blocked
                 if not self.is_blocked(x, y):
