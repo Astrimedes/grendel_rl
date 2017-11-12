@@ -1243,7 +1243,7 @@ class NPC:
         turn_clockwise = choice([True,False])
         PATH_LENGTH = 2
         best_path = None
-        most_clear = 10 # require minimum decent path
+        most_clear = 3 # require minimum decent path
         best_idx = 0
         valid = False
         _xdir = xdir

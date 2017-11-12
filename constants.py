@@ -34,8 +34,8 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 8
-ROOM_MIN_SIZE = 4
+ROOM_MAX_SIZE = 6
+ROOM_MIN_SIZE = 3
 MAX_ROOMS = 32
 
 # monster qty

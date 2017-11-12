@@ -168,6 +168,10 @@ class Game:
         if self.messages:
             del self.messages
         self.messages = []
+        
+        #a warm welcoming message!
+        msg = 'You sneak into Heorot, home of Beowulf and his men... Tonight they all must die!'
+        self.message(msg, colors.light_flame)
      
     ### MAIN LOOP ###
     def play_game(self):
@@ -175,10 +179,6 @@ class Game:
         action = None
         self.mouse_coord = (0, 0)
         self.last_command_time = 0
-        
-        #a warm welcoming message!
-        msg = 'You sneak into Heorot, home of Beowulf and his men... Tonight they all must die!'
-        self.message(msg, colors.light_flame)
         
         while not tdl.event.is_window_closed():
             action = None
