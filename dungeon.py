@@ -510,7 +510,7 @@ The Boss enemy (GameObject)
 class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
-        bt_ai = BossMonster(dungeon)
+        bt_ai = BossNPC(dungeon)
         
         bt_fighter = Fighter(hp=50, defense=4, power=10,
             speed=1.25, death_function=self.death)
@@ -1631,7 +1631,7 @@ class BardNPC(NPC):
                     # fight or flee player in view...
                     else:
                         # flee - Bard flees based on distance from player!
-                        if self.pdistance < self.flee_dist and len(_dungeon.combatants) < 2 and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
+                        if self.pdistance < self.flee_dist and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
                             self.change_state(states.FLEE)
                         # otherwise fight
                         else:
@@ -1702,7 +1702,7 @@ class BardNPC(NPC):
 """
 Monster AI (tough monster)
 """
-class BossMonster(NPC):
+class BossNPC(NPC):
     #AI for boss monster
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
         flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
@@ -1711,6 +1711,64 @@ class BossMonster(NPC):
             vision_range = constants.START_VISION+1, flee_health=0.08, flee_chance=0.1)
             
         self.leader = True
+        
+        # if allowed to use special...
+        self.special = True
+        
+        
+    # Fight - with special move! (return turns used)
+    def take_fight(self):
+        #move towards player if not close enough to strike
+        if self.pdistance > constants.MIN_PDIST:
+            # check for state change to wander
+            if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+                self.change_state(states.WANDER)
+                return self.take_movetarget()
+                
+            # shout a curse at player
+            if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+                _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+                # shout makes a noise!
+                _dungeon.make_noise(self.owner.x, self.owner.y, 10)
+        
+            #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
+            _dungeon.move_astar(self.owner, self.last_px, self.last_py)
+            #return turns used
+            return self.owner.fighter.move_speed()
+        else:
+            # check for using special move!
+            phealth = _dungeon.player.fighter.hp / _dungeon.player.fighter.max_hp
+            try_special = 0.2
+            if phealth < 0.5 and self.special and randfloat(0,1) < try_special:
+                # chance to fail based on player health!
+                grab = randfloat(0,1.05) > phealth
+                if grab:
+                    self.special = False
+                    # make arm weapon based on player stats!
+                    arm_weapon = Weapon(min_dmg=round(_dungeon.player.fighter.power/4), max_dmg=_dungeon.player.fighter.power+3, 
+                    speed=0, attack_names=["Grendel's arm"], attack_verbs=['bashes'], map_char = 'w', map_color = colors.green)
+                    # reduce player stats!
+                    _dungeon.player.fighter.power = round(_dungeon.player.fighter.power / 2)
+                    
+                    # calc dmg and announce
+                    dmg = round(_dungeon.player.fighter.hp/2)
+                    _dungeon.game.message('* Beowulf tears your arm off for ' + str(dmg) + ' damage!!!', colors.light_red)
+                    
+                    # deal dmg silently to player
+                    _dungeon.player.fighter.take_dmg_silent(dmg)
+                    
+                    # equip the new weapon!
+                    self.owner.fighter.weapon = arm_weapon
+                else:
+                    _dungeon.game.message('* Beowulf tries to tear your arm off, but fails!!!', colors.light_red)
+            else:
+                #close enough, attack!
+                self.owner.fighter.attack(_dungeon.player)
+                #track turn
+                self.last_attack_turn = _dungeon.turn
+                
+            return self.owner.fighter.attack_speed()
+    
         
 
 ### functions with  no class ###
