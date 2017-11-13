@@ -1,0 +1,1 @@
+Pyinstaller grendel_dist.spec grendel.py

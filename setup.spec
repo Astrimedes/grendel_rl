@@ -3,12 +3,12 @@
 block_cipher = None
 
 
-a = Analysis(['main.py'],
-             pathex=['C:\\Users\\mturano\\Dropbox\\CS50 Project\\roguelike'],
+a = Analysis(['setup.py', 'main.py'],
+             pathex=['C:\\Users\\Mike\\Dropbox\\CS50 Project\\roguelike'],
              binaries=[],
-             datas=[],
+             datas=['terminal16x16.png','grendel.png','SDL2.dll'],
              hiddenimports=[],
-             hookspath=['.'],
+             hookspath=[],
              runtime_hooks=[],
              excludes=[],
              win_no_prefer_redirects=False,
@@ -19,7 +19,7 @@ pyz = PYZ(a.pure, a.zipped_data,
 exe = EXE(pyz,
           a.scripts,
           exclude_binaries=True,
-          name='main',
+          name='setup',
           debug=False,
           strip=False,
           upx=True,
@@ -30,4 +30,4 @@ coll = COLLECT(exe,
                a.datas,
                strip=False,
                upx=True,
-               name='main')
+               name='setup')

@@ -259,8 +259,8 @@ class Fighter:
             
             #cc = colors.mutate_color(colors.white, attack_color, fraction)
                 
-            self.owner.dungeon.game.message(attacker_name + "'s " + weapon_name + ' ' + attack_verb + 
-                  ' ' + selfname + ' for ' + str(damage) + ' damage.', attack_color)
+            self.owner.dungeon.game.message('* ' + attacker_name + "'s " + weapon_name + ' ' + attack_verb + 
+                  ' ' + selfname + ' for ' + str(damage) + ' damage!', attack_color)
                   
             self.take_dmg_silent(damage)
             
@@ -300,7 +300,7 @@ class Fighter:
             else:
                 target.fighter.take_damage(shortname, self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
         else:
-            self.owner.dungeon.game.message(shortname + "'s " + self.weapon.atk_name() + ' ' + self.weapon.atk_verb() + ' ' + target.name + 
+            self.owner.dungeon.game.message('* ' + shortname + "'s " + self.weapon.atk_name() + ' ' + self.weapon.atk_verb() + ' ' + target.name + 
                   ' but it has no effect!')
  
     def heal(self, amount):
@@ -833,6 +833,8 @@ class Dungeon:
             added = False
             while not(added) and tries < 100:
                 tries += 1
+                
+                
             
                 #choose random spot for this monster
                 x = randint(room.x - room.w + 1, room.x + room.w - 1)
@@ -853,6 +855,8 @@ class Dungeon:
                             # add monster to dungeon
                             self.objects.append(monster)
                             mon_left -= 1
+                            added = False
+                            break
                         montype = randfloat(0,1)
                         if montype < constants.MONSTER_TOUGH:
                             #create a tough guy
@@ -860,13 +864,15 @@ class Dungeon:
                             # add monster to dungeon
                             self.objects.append(monster)
                             mon_left -= 1
+                            added = False
+                            break
+                    else:
+                        #create a scout regardless
+                        monster = Scout(self, x, y)                                                
+                        # add monster to dungeon
+                        self.objects.append(monster)
                     
-                    #create a scout regardless
-                    monster = Scout(self, x, y)                                                
-                    # add monster to dungeon
-                    self.objects.append(monster)
-                    
-
+    
                 
     ### MAP QUERIES ###
     def distance_to(self, game_obj, other_game_obj):
@@ -1553,7 +1559,7 @@ class BardNPC(NPC):
                 
             # bard's music stats
             self.music_range = 4
-            self.music_power = 4
+            self.music_power = 3
             self.music_speed = 1.1
             
             # flee distance
@@ -1828,7 +1834,7 @@ def cast_heal():
         _dungeon.game.message("You should save this for when you're wounded.", colors.red)
         return False
  
-    _dungeon.game.message("You consume your enemy's heart! Your heal " + str(constants.HEAL_AMOUNT) + ' damage.', colors.light_violet)
+    _dungeon.game.message("You consume your enemy's heart! Your heal " + str(constants.HEAL_AMOUNT) + ' damage!', colors.light_violet)
     _dungeon.player.fighter.heal(constants.HEAL_AMOUNT)
     
     return True
