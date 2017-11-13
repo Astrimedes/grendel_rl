@@ -359,12 +359,12 @@ class Scout(GameObject):
         
         barb_ai = NPC()
             
-        barb_fighter = Fighter(hp=9, defense=1, power=3, 
+        barb_fighter = Fighter(hp=8, defense=1, power=3, 
             speed=1, death_function=self.death)
         
-        weapon = Weapon(min_dmg=1, max_dmg=5, speed=0, 
+        weapon = Weapon(min_dmg=2, max_dmg=4, speed=0, 
         attack_names=['sword'], 
-        attack_verbs=['pokes', 'stabs'], 
+        attack_verbs=['slashes', 'stabs'], 
         map_char = 'w', map_color = colors.white)
         
         barb_fighter.weapon = weapon
@@ -424,10 +424,10 @@ class Warrior(Scout):
             # vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
         bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3)
         
-        bt_fighter = Fighter(hp=20, defense=3, power=8,
+        bt_fighter = Fighter(hp=14, defense=3, power=6,
             speed=1.5, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=8, speed=0, 
+        weapon = Weapon(min_dmg=4, max_dmg=8, speed=-0.4, 
         attack_names=['greataxe'], 
         attack_verbs=['chops', 'carves'], 
         map_char = 'w', map_color = colors.white)
@@ -440,6 +440,50 @@ class Warrior(Scout):
         GameObject.__init__(self, dungeon, x, y, 'W', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
+                 
+"""
+Bard enemy
+"""
+
+
+class Bard(Scout):
+    #ranged monster GameObject
+    def __init__(self, dungeon, x, y):
+        
+        bard_ai = BardNPC()
+            
+        bard_fighter = Fighter(hp=5, defense=1, power=1, 
+            speed=1.2, death_function=self.death)
+        
+        weapon = Weapon(min_dmg=1, max_dmg=2, speed=0, 
+        attack_names=['knife'], 
+        attack_verbs=['pricks'], 
+        map_char = 'w', map_color = colors.white)
+        
+        bard_fighter.weapon = weapon
+        
+        # objects that drop upon death
+        self.drop_objects = []
+                 
+        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Bard', colors.dark_azure, blocks=True, 
+                 fighter=bard_fighter, ai=bard_ai, item=None)
+                 
+                 
+                 
+    def death(self):    
+        
+        # transform to corpse
+        self.name = 'corpse of ' + self.name
+        self.char = '%'
+        self.color = constants.color_dead
+        self.blocks = False
+        self.fighter = None
+        self.ai = None
+        
+        # sort this tile properly
+        _dungeon.game.sort_obj_at(self.x, self.y)
+
+
 
 """
 The Boss enemy (GameObject)
@@ -567,8 +611,6 @@ class Dungeon:
         self.visible_tiles = []
         self.level = 1
         
-        self.beowulf = False
-        
         # keeps track of turns passed (use monster/player speed to check when to act)
         self.start_time = constants.START_TIME + randint(0, 10800)
         self.turn = 0
@@ -597,32 +639,27 @@ class Dungeon:
         # self.inventory.append(Legs().item)
         
     def create_Beowulf(self):
-        
-        if not(self.beowulf):
-            self.beowulf = True
-        
-            # select a position near the opposite edge of the map from player
-            xrange = (constants.MAP_WIDTH // 10)
-            if self.player.x > constants.MAP_WIDTH // 2:
-                xmin = 0
-                xmax = xrange + 1
-            else:
-                xmax = constants.MAP_WIDTH
-                xmin = xmax - xrange - 1
-            
-            added = False
-            while not(added):
-                y = randint(0, constants.MAP_HEIGHT-2)
-                x = randint(xmin, xmax)
-                if not self.is_blocked(x,y):
-                    # place beowulf!
-                    boss = Beowulf(self, x, y)
-                    self.objects.append(boss)
-                    # announce!
-                    self.game.message("From across the way you hear: I will avenge my kin, foul beast!", colors.light_violet)
-                    self.game.msgbox("Your mightiest enemy, Beowulf has arrived!", tcolor=colors.yellow, map_window=True)
-                    added = True
-                    break
+    
+        room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.BIGROOM][0]
+        pt = (1, 0)
+        tries = 0
+        added = False
+        x, y = room.center()
+        while not(added):
+            added = not(self.is_blocked(x, y))
+            if not(added):
+                if tries % 8 == 0:
+                    pt = (1,0)
+                    if randint(0,1) == 0:
+                        x += 1
+                    else:
+                        y += 1
+                pt = rotate_pt(pt, True)
+                x += pt[0]
+                y += pt[1]
+            tries += 1
+        # place beowulf!
+        boss = Beowulf(self, x, y)
         
     def count_enemies(self):
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
@@ -638,9 +675,9 @@ class Dungeon:
             del self.generator
      
         #fill map with "blocked" tiles
-        self.map = [[ Tile(True)
-            for y in range(constants.MAP_HEIGHT) ]
-                for x in range(constants.MAP_WIDTH) ]
+        self.map = [[Tile(True)
+            for y in range(constants.MAP_HEIGHT)]
+                for x in range(constants.MAP_WIDTH)]
      
         rooms = []
         num_rooms = 0
@@ -653,6 +690,7 @@ class Dungeon:
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
                 max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=5,
                 random_spurs=1)
+        
         self.generator.gen_level()
         
         # populate tiles
@@ -663,26 +701,49 @@ class Dungeon:
                     t.blocked = False
                     t.block_sight = False
                     
-        # room = (x, y, w, h)
-        # add items to rooms
+        # find furthest left room for player
+        minx = constants.MAP_WIDTH
+        p_room = None
+        for r in self.generator.room_list:
+            if r.x < minx:
+                minx = r.x
+                p_room = r
+        # only add player to this room
+        pt = (1, 0)
+        tries = 0
         added_player = False
+        px, py = p_room.center()
+        while not(added_player):
+            added_player = not(self.is_blocked(px, py))
+            if not(added_player):
+                if tries % 8 == 0:
+                    pt = (1,0)
+                    if randint(0,1) == 0:
+                        px += 1
+                    else:
+                        py += 1
+                pt = rotate_pt(pt, True)
+                px += pt[0]
+                py += pt[1]
+            tries += 1
+        # assign player room coordinates
+        self.player.x, self.player.y = px, py
+        
+        # place beowulf in a big room
+        self.create_Beowulf()
+        
+        # add items to rooms
         while monsters_left > 0:
             for i, new_room in enumerate(self.generator.room_list):
-                # only add player to first room
-                if i == 0:
-                    if not added_player:
-                        self.player.x, self.player.y = new_room.center()
-                        added_player = True
-                    continue
-            
-                # qty of monsters can depend on room size
-                #max_monsters = round((new_room[2] * new_room[3])/3.0)
-                max_monsters = 1
-                monsters = randint(0, min(monsters_left, max_monsters))
-                monsters_left -= monsters
-                
-                # add them!
-                self.place_objects_gen(new_room, monsters)
+                if not(new_room is p_room):
+                    # qty of monsters can depend on room size
+                    #max_monsters = round((new_room[2] * new_room[3])/3.0)
+                    max_monsters = 1
+                    monsters = randint(0, min(monsters_left, max_monsters))
+                    monsters_left -= monsters
+                    
+                    # add them!
+                    self.place_objects_gen(new_room, monsters)
                 
         # add items to monsters
         self.add_items_to_monsters(constants.ITEM_QTY)
@@ -762,12 +823,16 @@ class Dungeon:
                     mon_left -= 1
                     added = True
                     tough_monster = randfloat(0, 1) <= constants.MONSTER_TOUGH
-                    if not(tough_monster):  #% chance of getting a chump
-                        #create a chump
-                        monster = Scout(self, x, y)
-                    else:
+                    bard_monster = not(tough_monster) and randfloat(0,1) <= constants.MONSTER_BARD
+                    if tough_monster:
                         #create a tough guy
                         monster = Warrior(self, x, y)
+                    elif bard_monster:
+                        # bard
+                        monster = Bard(self, x, y)
+                    else:
+                        #create a scout
+                        monster = Scout(self, x, y)                        
                         
                     # add monster to dungeon
                     self.objects.append(monster)
@@ -1415,6 +1480,8 @@ class NPC:
             # shout a curse at player
             if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
                 _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+                # shout makes a noise!
+                _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
         
             #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.last_px, self.last_py)
@@ -1427,7 +1494,151 @@ class NPC:
             self.last_attack_turn = _dungeon.turn
             return self.owner.fighter.attack_speed()
 
-
+"""
+Bard AI
+"""
+class BardNPC(NPC):
+        def __init__(self, hearing = 0.1, laziness = 0.2, 
+                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.75, 
+                curses=['It hates the music!']):
+                
+            # bard's music stats
+            self.music_range = 4
+            self.music_power = 3
+            self.music_speed = 1.1
+            
+            # flee distance
+            self.flee_dist = 3
+            
+            self.owner = None
+            
+            self.fov_radius = vision_range
+            
+            # flee thresholds
+            self.flee_health = flee_health
+            self.flee_chance = flee_chance
+        
+            # begin sleeping
+            self.state = states.SLEEP
+            self.last_state = states.SLEEP
+            self.state_turns = 0 # how many turns current state has been active
+            
+            # distance to player at last calculation
+            self.pdistance = 0
+            
+            # turn count last time player was attacked
+            self.last_attack_turn = -1
+            
+            # visible tiles
+            self.view = None
+            
+            # last known player position
+            self.last_px = None
+            self.last_py = None
+            
+            # last target position (while wandering)
+            self.target_x = None
+            self.target_y = None
+            
+            # hearing chance (to wake up or be alerted that player is near)
+            self.hearing = hearing
+            
+            # chance to fall asleep
+            self.laziness = laziness
+            
+            # fight shouts
+            self.curses = curses
+            
+        def take_turn(self):
+            monster = self.owner
+            
+            # monster pathfinding
+            self.pdistance = _dungeon.distance_to(monster, _dungeon.player)
+            
+            logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
+            
+            self.view = None
+            
+            # determine if it falls asleep while player far away
+            if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
+                if self.state_turns > 20 and randfloat(0,1) <= self.laziness:
+                    self.change_state(states.SLEEP)
+            # if monster sees player... 
+            elif self.pdistance < constants.MAX_HEAR_DIST:
+                # fov (store visible tiles)
+                self.view = tdl.map.quickFOV(monster.x, monster.y, is_visible_tile, radius = self.fov_radius)
+                # if player could be seen...
+                if self.player_in_view():
+                    # strong chance to wake from sleep
+                    if self.state == states.SLEEP:
+                        if randfloat(0,1) < 0.9:
+                            self.change_state(states.FIGHT)
+                    # fight or flee player in view...
+                    else:
+                        # flee - Bard flees based on distance from player!
+                        if self.pdistance < self.flee_dist and len(_dungeon.combatants) < 2 and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
+                            self.change_state(states.FLEE)
+                        # otherwise fight
+                        else:
+                            self.change_state(states.FIGHT)
+                        
+            # record player position if visible
+            if not(self.state == states.SLEEP) and self.player_in_view():
+                self.last_px = _dungeon.player.x
+                self.last_py = _dungeon.player.y
+                        
+            # count turns in state
+            self.state_turns += 1
+            
+            if self.state == states.SLEEP:
+                return self.take_sleep()
+                
+            if self.state == states.WANDER:
+                return self.take_movetarget()
+                
+            if self.state == states.FIGHT:
+                return self.take_fight()
+                
+            if self.state == states.FLEE:
+                return self.take_flee()
+                
+        # Fight! (return turns used)
+        def take_fight(self):
+            
+            #move towards player if not close enough to strike
+            if self.pdistance > constants.MIN_PDIST:
+                # check for state change to wander
+                if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+                    self.change_state(states.WANDER)
+                    return self.take_movetarget()
+                    
+                # shout a curse at player
+                if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+                    _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+                    # shout makes a noise!
+                    _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
+            
+                # see if we need to move in range of music...
+                if self.pdistance <= self.music_range and self.player_in_view():
+                    # play music! (attack ranged)
+                    shortname = chr(14) + ' ' + strleft_back(self.owner.name, ' the ')
+                    atk_color = colors.light_flame
+                    _dungeon.player.fighter.take_damage(shortname, 'pierces', 'merry music', atk_color, randint(1, self.music_power))
+                    return self.music_speed
+                else:
+                    _dungeon.move_astar(self.owner, self.last_px, self.last_py)
+                    return self.owner.fighter.move_speed()
+                    
+            else:
+                #forced to attack with bad dagger weapon
+                self.owner.fighter.attack(_dungeon.player)
+                #track turn
+                self.last_attack_turn = _dungeon.turn
+                return self.owner.fighter.attack_speed()
+        
+        
+            
+            
         
 """
 Monster AI (tough monster)

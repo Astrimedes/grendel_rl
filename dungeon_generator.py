@@ -16,6 +16,8 @@ import random
 
 from enumerations import Enum
 
+import constants
+
 # tile types
 tiles = Enum([('STONE',' '), ('FLOOR','.'), ('WALL','#')])
 
@@ -76,8 +78,8 @@ class Generator():
         minx = region_x+1
         miny = region_y+1
         
-        x = random.randint(minx, (region_x + region_w - w - 1))
-        y = random.randint(miny, (region_y + region_h - h - 1))
+        x = random.randint(minx, (region_x + region_w - w - 2))
+        y = random.randint(miny, (region_y + region_h - h - 2))
  
         #create a room
         return Room(x, y, w, h)
@@ -85,26 +87,34 @@ class Generator():
     def gen_large_room_in_region(self, region_x, region_y, region_w, region_h):
         x, y, w, h = 0, 0, 0, 0
  
-        newmin = min(self.max_room_xy*2, max(region_w-3, 1))
-        newmax = min(newmin*2, max(region_w-1, 2))
-        
+        newmin = min(constants.BIGROOM_MIN_W, max(region_w-6, 1))
+        newmax = min(constants.BIGROOM_MAX_W, max(region_w-4, 2))
         w = random.randint(newmin, newmax)
+        
+        newmin = min(constants.BIGROOM_MIN_H,  max(region_h-6, 1))
+        newmax = min(constants.BIGROOM_MAX_H, max(region_h-4, 2))
         h = random.randint(newmin, newmax)
         
         minx = region_x+1
         miny = region_y+1
         
-        x = random.randint(minx, (region_x + region_w - w - 1))
-        y = random.randint(miny, (region_y + region_h - h - 1))
+        x = random.randint(minx, max((minx + region_w - w - 2),minx+1))
+        y = random.randint(miny, max((miny + region_h - h - 2),miny+1))
+        
+        rm = Room(x, y, w, h, rtype = rtypes.BIGROOM)
  
         #create a room
-        return Room(x, y, w, h, rtype = rtypes.BIGROOM)
+        return rm
  
     def room_overlapping(self, room, room_list):
         x = room.x
         y = room.y
         w = room.w
         h = room.h
+        
+        # out of bounds
+        if x + w + 1 > self.width or y + h + 1 > self.height or x - 1 < 0 or y - 1 < 0:
+            return True
  
         for current_room in room_list:
  
@@ -113,10 +123,10 @@ class Generator():
             # is greater than the other's maximum in
             # that dimension.
  
-            if (x < (current_room.x + current_room.w) - 1 and
-                current_room.x < (x + w - 1) and
-                y < (current_room.y + current_room.h - 1) and
-                current_room.y < (y + h - 1)):
+            if (x < (current_room.x + current_room.w) and
+                current_room.x < (x + w) and
+                y < (current_room.y + current_room.h) and
+                current_room.y < (y + h)):
  
                 return True
  
@@ -247,63 +257,51 @@ class Generator():
         # build an empty dungeon, blank the room and corridor lists
         for i in range(self.height):
             self.level.append([tiles.STONE] * self.width)
+            
         self.room_list = []
         self.corridor_list = []
         
         # divide the dungeon up into 4 'regions' to generate rooms inside of
         regions = []
-        hw = self.width//2
-        hh = self.height//2
-        regions.append((0, 0, hw, hh))
-        regions.append((0, hh, hw, hh))
-        regions.append((hw, hh, hw, hh))
-        regions.append((hw, 0, hw, hh))
+        pw = self.width // 3
+        ph = self.height // 3
+        regions.append((0, 0, pw, self.height))
+        regions.append((pw, 0, pw, self.height))
+        regions.append((pw*2, 0, pw, self.height))
         
         # 'large room' chance
         lrg_rm = 0.08
  
-        # start generating rooms in each region
-        max_region_rooms = self.max_rooms // 4
-        max_iters = max_region_rooms * 5
+        # FIRST REGIONS
+        # start generating rooms in the first 'normal' regions
+        max_region_rooms = self.max_rooms // 3
+        max_iters = max_region_rooms * 4
         last = len(regions)-1
         while len(self.room_list) < self.max_rooms:
             for i, r in enumerate(regions):
                 rr = 0
-                for a in range(max_iters):
-                    # select which kind of room we'll make...
-                    roomfunc = self.gen_room_in_region # normal
-                    if random.uniform(0,1) <= lrg_rm:
-                        roomfunc = self.gen_large_room_in_region # large room
-                        
-                    # generate the room
-                    tmp_room = roomfunc(r[0], r[1], r[2], r[3])
-         
-                    if self.rooms_overlap or not self.room_list:
-                        self.room_list.append(tmp_room)
-                        rr += 1
-                    else:
-                        # select which kind of room we'll make...
-                        roomfunc = self.gen_room_in_region # normal
-                        if random.uniform(0,1) <= lrg_rm:
-                            roomfunc = self.gen_large_room_in_region # large room
+                if i < last:
+                    for a in range(max_iters):
                         # generate the room
-                        tmp_room = roomfunc(r[0], r[1], r[2], r[3])
-                        
-                        tmp_room_list = self.room_list[:]
-         
-                        if not(self.room_overlapping(tmp_room, tmp_room_list)):
+                        tmp_room = self.gen_room_in_region(r[0], r[1], r[2], r[3])
+             
+                        if self.rooms_overlap or not self.room_list:
                             self.room_list.append(tmp_room)
                             rr += 1
-         
-                    if rr >= max_region_rooms:
-                        break
-                    
-        # print the rooms
-        for r in self.room_list:
-            print(str(r))
+                        else:
+                            # generate the room
+                            tmp_room = self.gen_room_in_region(r[0], r[1], r[2], r[3])
+                            
+                            tmp_room_list = self.room_list[:]
+             
+                            if not(self.room_overlapping(tmp_room, tmp_room_list)):
+                                self.room_list.append(tmp_room)
+                                rr += 1
+             
+                        if rr >= max_region_rooms:
+                            break
  
- 
-        # connect the rooms
+        # connect the rooms thus far
         for a in range(len(self.room_list) - 1):
             self.join_rooms(self.room_list[a], self.room_list[a + 1])
  
@@ -312,13 +310,50 @@ class Generator():
             room_1 = self.room_list[random.randint(0, len(self.room_list) - 1)]
             room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
             self.join_rooms(room_1, room_2)
- 
+        
         # do the spurs
         for a in range(self.random_spurs):
             room_1 = Room(random.randint(2, self.width - 2), random.randint(2, self.height - 2), 1, 1)
             room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
             self.join_rooms(room_1, room_2)
             del room_1
+        
+        # LAST REGION
+        # now fill in last region with 'large rooms'
+        rindex = len(self.room_list)-1 # index of room previous to this region
+        r = regions[last]
+        rr = 0
+        for a in range(max_iters):
+            # generate the room
+            tmp_room = self.gen_large_room_in_region(r[0], r[1], r[2], r[3])
+
+            if self.rooms_overlap or not self.room_list:
+                self.room_list.append(tmp_room)
+                rr += 1
+            else:
+                # generate the room
+                tmp_room = self.gen_large_room_in_region(r[0], r[1], r[2], r[3])
+                
+                tmp_room_list = self.room_list[:]
+ 
+                if not(self.room_overlapping(tmp_room, tmp_room_list)):
+                    self.room_list.append(tmp_room)
+                    rr += 1
+            if rr >= max_region_rooms:
+                break
+            
+        # connect the large rooms in the new region
+        max_index = len(self.room_list)-1
+        if max_index >= rindex + 2:
+            for i in range(rindex+1, max_index):
+                self.join_rooms(self.room_list[i], self.room_list[i+1])
+        
+        # make one connection to previous rooms
+        min_rm = max(0, rindex - 2)
+        r1 = self.room_list[random.randint(0, rindex)]
+        r2 = self.room_list[random.randint(rindex+1, len(self.room_list)-1)]
+        self.join_rooms(r1, r2)
+            
  
         # fill the map
         # paint rooms x,y,w,h

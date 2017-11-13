@@ -492,14 +492,14 @@ class Game:
     def move_camera(self, target_x, target_y):
  
         #new camera coordinates (top-left corner of the screen relative to the map)
-        x = round(target_x - (constants.CAMERA_WIDTH / 2))  #coordinates so that the target is at the center of the screen
-        y = round(target_y - (constants.CAMERA_HEIGHT / 2))
+        x = round(target_x - ((constants.CAMERA_WIDTH) / 2))  #coordinates so that the target is at the center of the screen
+        y = round(target_y - ((constants.CAMERA_HEIGHT) / 2))
  
         #make sure the camera doesn't see outside the map
-        if x < 0: x = 0
-        if y < 0: y = 0
-        if x > constants.MAP_WIDTH - constants.CAMERA_WIDTH - 1: x = constants.MAP_WIDTH - constants.CAMERA_WIDTH
-        if y > constants.MAP_HEIGHT - constants.CAMERA_HEIGHT - 1: y = constants.MAP_HEIGHT - constants.CAMERA_HEIGHT
+        if x < -1: x = -1
+        if y < -1: y = -1
+        if x > constants.MAP_WIDTH - constants.CAMERA_WIDTH + 1: x = constants.MAP_WIDTH - constants.CAMERA_WIDTH + 1
+        if y > constants.MAP_HEIGHT - constants.CAMERA_HEIGHT + 1: y = constants.MAP_HEIGHT - constants.CAMERA_HEIGHT + 1
  
         if x != self.camera_x or y != self.camera_y: self.fov_recompute = True
         (self.camera_x, self.camera_y) = (x, y)
@@ -809,7 +809,7 @@ class Game:
         
         if  not self.dungeon:
             return
-            
+        
         # adjust camera
         self.move_camera(self.dungeon.player.x, self.dungeon.player.y)
         
@@ -821,10 +821,10 @@ class Game:
                                              fov=constants.FOV_ALGO,
                                              radius=self.dungeon.player.fov,
                                              lightWalls=constants.FOV_LIGHT_WALLS)
-                                             
+        
         # draw frame around map
         self.map_console.draw_frame(0, 0, self.map_console.width, self.map_console.height, string=None, fg=None, bg=constants.color_frame)
-     
+        
         #go through all tiles in camera view, and set their background color according to the FOV
         for y in range(1, constants.CAMERA_HEIGHT-1):
             for x in range(1, constants.CAMERA_WIDTH-1):
