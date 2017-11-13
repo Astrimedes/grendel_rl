@@ -82,9 +82,6 @@ def format_list(strings):
         return text
     else:
         s = strings[0]
-        article = get_article(s)
-        if article:
-            s = article + ' ' + s
         return s
         
 

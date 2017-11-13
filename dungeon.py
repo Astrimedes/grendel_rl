@@ -446,7 +446,7 @@ class Bard(Scout):
         
         bard_ai = BardNPC()
             
-        bard_fighter = Fighter(hp=5, defense=1, power=1, 
+        bard_fighter = Fighter(hp=5, defense=1, power=2, 
             speed=1.2, death_function=self.death)
         
         weapon = Weapon(min_dmg=1, max_dmg=2, speed=0, 
@@ -458,7 +458,7 @@ class Bard(Scout):
         
         # objects that drop upon death
         self.drop_objects = []
-                 
+        
         GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Bard', colors.darkest_orange, blocks=True, 
                  fighter=bard_fighter, ai=bard_ai, item=None)
                  
@@ -481,6 +481,11 @@ class Bard(Scout):
                 _dungeon.objects.append(itm)
             # announce
             names = format_list([itm.name for itm in self.drop_objects])
+            # add article for single items
+            if len(self.drop_objects) < 2:
+                article = strutil.get_article(names)
+                if article:
+                    names = article + ' ' + names
             _dungeon.game.message('You see ' + names + ' in ' + self.name + "'s corpse!", colors.light_orange)
                 
         # transform to corpse
@@ -845,15 +850,22 @@ class Dungeon:
                         if montype < constants.MONSTER_BARD:
                             # bard
                             monster = Bard(self, x, y)
-                        else:
+                            # add monster to dungeon
+                            self.objects.append(monster)
+                            mon_left -= 1
+                        montype = randfloat(0,1)
+                        if montype < constants.MONSTER_TOUGH:
                             #create a tough guy
                             monster = Warrior(self, x, y)
-                    else:
-                        #create a scout
-                        monster = Scout(self, x, y)                                                
-                        
+                            # add monster to dungeon
+                            self.objects.append(monster)
+                            mon_left -= 1
+                    
+                    #create a scout regardless
+                    monster = Scout(self, x, y)                                                
                     # add monster to dungeon
                     self.objects.append(monster)
+                    
 
                 
     ### MAP QUERIES ###
@@ -1223,6 +1235,9 @@ class NPC:
         # count turns in state
         self.state_turns += 1
         
+        # set color by state
+        self.owner.color = self.calc_color()
+        
         if self.state == states.SLEEP:
             return self.take_sleep()
             
@@ -1234,6 +1249,22 @@ class NPC:
             
         if self.state == states.FLEE:
             return self.take_flee()
+            
+    """
+    Determine color according to state
+    """
+    def calc_color(self):
+        c = colors.black
+        if self.state == states.FIGHT:
+            c = colors.dark_orange
+        if self.state == states.FLEE:
+            c = colors.light_orange
+        elif self.state == states.SLEEP:
+            c = colors.darkest_grey
+        elif self.state == states.WANDER:
+            c = colors.dark_grey
+            
+        return c
             
     """
     Sleep for one turn
@@ -1608,6 +1639,9 @@ class BardNPC(NPC):
             # count turns in state
             self.state_turns += 1
             
+            # set color by state
+            self.owner.color = self.calc_color()
+            
             if self.state == states.SLEEP:
                 return self.take_sleep()
                 
@@ -1639,9 +1673,10 @@ class BardNPC(NPC):
                 # see if we need to move in range of music...
                 if self.pdistance <= self.music_range and self.player_in_view():
                     # play music! (attack ranged)
-                    shortname = chr(14) + ' ' + strleft_back(self.owner.name, ' the ')
+                    dmg = randint(1, self.music_power)
+                    shortname = (chr(14)*dmg) + ' ' + strleft_back(self.owner.name, ' the ')
                     atk_color = colors.light_flame
-                    _dungeon.player.fighter.take_damage(shortname, 'pierces', 'merry music', atk_color, randint(1, self.music_power))
+                    _dungeon.player.fighter.take_damage(shortname, 'pierces', 'merry music', atk_color, dmg)
                     return self.music_speed
                 else:
                     _dungeon.move_astar(self.owner, self.last_px, self.last_py)

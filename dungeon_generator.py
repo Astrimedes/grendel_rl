@@ -319,30 +319,38 @@ class Generator():
             del room_1
         
         # LAST REGION
-        # now fill in last region with 'large rooms'
+        # now fill in last region with several small rooms
         rindex = len(self.room_list)-1 # index of room previous to this region
         r = regions[last]
-        rr = 0
+        sr = 0
+        sr_target = 3
         for a in range(max_iters):
-            # generate the room
-            tmp_room = self.gen_large_room_in_region(r[0], r[1], r[2], r[3])
-
-            if self.rooms_overlap or not self.room_list:
-                self.room_list.append(tmp_room)
-                rr += 1
-            else:
-                # generate the room
-                tmp_room = self.gen_large_room_in_region(r[0], r[1], r[2], r[3])
-                
+            fits = False
+            # generate the small rooms
+            if sr < sr_target:
                 tmp_room_list = self.room_list[:]
- 
-                if not(self.room_overlapping(tmp_room, tmp_room_list)):
-                    self.room_list.append(tmp_room)
-                    rr += 1
-            if rr >= max_region_rooms:
+                while not(fits):
+                    tmp_room = self.gen_room_in_region(r[0], r[1], r[2], r[3])
+                    fits = self.rooms_overlap or not(self.room_list) or not(self.room_overlapping(tmp_room, tmp_room_list))
+                self.room_list.append(tmp_room)
+                sr += 1
+            else:
                 break
+        # and now several large rooms
+        lr = 0
+        lr_target = 2
+        for a in range(max_iters):
+            fits = False
+            # generate the large rooms
+            if lr < lr_target:
+                tmp_room_list = self.room_list[:]
+                while not(fits):
+                    tmp_room = self.gen_large_room_in_region(r[0], r[1], r[2], r[3])
+                    fits = self.rooms_overlap or not(self.room_list) or not(self.room_overlapping(tmp_room, tmp_room_list))
+                self.room_list.append(tmp_room)
+                lr += 1
             
-        # connect the large rooms in the new region
+        # connect the rooms in the new region
         max_index = len(self.room_list)-1
         if max_index >= rindex + 2:
             for i in range(rindex+1, max_index):

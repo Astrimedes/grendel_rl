@@ -573,15 +573,16 @@ class Game:
         else:
             return None
         
-    def get_obj_names_at(self, x, y):
+    def get_obj_names_at(self, x, y, use_article=False):
         #create a list with the names of all objects at the mouse's coordinates and in FOV
         names = [obj.name for obj in self.dungeon.objects if (obj.x, obj.y) == (x,y) and (obj.x, obj.y) in self.dungeon.visible_tiles]
         # if names:
             # logging.info(str(names))
         names = ', '.join(names)  #join the names, separated by commas
-        article = strutil.get_article(names)
-        if article:
-            return article + ' ' + names
+        if use_article:
+            article = strutil.get_article(names)
+            if article:
+                return article + ' ' + names
         return names
         
     def get_items_at(self, x, y):
