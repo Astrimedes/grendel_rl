@@ -78,9 +78,33 @@ Returns a string with items listed as '1, 2, and 3'
 def format_list(strings):
     if len(strings) > 1:
         text = ', '.join(strings)
-        return strleft_back(text, ', ') + ', and ' + strright_back(text, ', ')
+        text = strleft_back(text, ', ') + ', and ' + strright_back(text, ', ')
+        return text
     else:
-        return strings[0]
+        s = strings[0]
+        article = get_article(s)
+        if article:
+            s = article + ' ' + s
+        return s
+        
+
+"""
+Return 'a' or 'an' appropriately for single objects, or None for multiple objects (if text has a comma)
+"""
+vowels = ['a','e','i','o','u','A','E','I','O','U']
+def get_article(text):
+    # no text
+    if not(text):
+        return None
+    # multiple objects - no article
+    if ',' in text:
+        return None
+    # An for vowels
+    if text[0] in vowels:
+        return 'an'
+    else:
+        return 'a'
+
 
 """
 Tests
@@ -100,5 +124,7 @@ if __name__ == '__main__':
         
     list = ['first','second','third']
     logging.info("format_list(%s) = %s", list, format_list(list))
+    
+
         
     

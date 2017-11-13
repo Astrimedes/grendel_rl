@@ -24,9 +24,10 @@ from datetime import date
 
 from barbarian_names import barb_name
 
-from substrings import strleft_back
-from substrings import strright_back
-from substrings import format_list
+from strutil import strleft_back
+from strutil import strright_back
+from strutil import format_list
+import strutil
 
 # GLOBALS #
 # logging
@@ -299,7 +300,7 @@ class Fighter:
             else:
                 target.fighter.take_damage(shortname, self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
         else:
-            self.owner.dungeon.game.message(shortname + ' attacks ' + target.name + 
+            self.owner.dungeon.game.message(shortname + "'s " + self.weapon.atk_name() + ' ' + self.weapon.atk_verb() + ' ' + target.name + 
                   ' but it has no effect!')
  
     def heal(self, amount):
@@ -408,11 +409,6 @@ class Scout(GameObject):
         # now re-count enemies (since we've set our Fighter to None)
         self.dungeon.count_enemies()
         
-        # check for 'boss summon'
-        if self.dungeon.enemies_left < constants.ENEMIES_FINAL:
-            # summon beowulf!
-            self.dungeon.create_Beowulf()
-        
         
 """
 Strong enemy (GameObject)
@@ -444,8 +440,6 @@ class Warrior(Scout):
 """
 Bard enemy
 """
-
-
 class Bard(Scout):
     #ranged monster GameObject
     def __init__(self, dungeon, x, y):
@@ -465,13 +459,30 @@ class Bard(Scout):
         # objects that drop upon death
         self.drop_objects = []
                  
-        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Bard', colors.dark_azure, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Bard', colors.darkest_orange, blocks=True, 
                  fighter=bard_fighter, ai=bard_ai, item=None)
                  
                  
                  
     def death(self):    
         
+        #transform it into a nasty corpse! it doesn't block, can't be
+        #attacked and doesn't move
+        self.dungeon.game.message(self.name + 
+            choice([' dies!', 
+            ' is silenced for good!']), colors.orange)
+            
+        if self.drop_objects:
+            for itm in self.drop_objects:
+                # give it this position
+                itm.x = self.x
+                itm.y = self.y
+                # add to dungeon
+                _dungeon.objects.append(itm)
+            # announce
+            names = format_list([itm.name for itm in self.drop_objects])
+            _dungeon.game.message('You see ' + names + ' in ' + self.name + "'s corpse!", colors.light_orange)
+                
         # transform to corpse
         self.name = 'corpse of ' + self.name
         self.char = '%'
@@ -482,6 +493,9 @@ class Bard(Scout):
         
         # sort this tile properly
         _dungeon.game.sort_obj_at(self.x, self.y)
+        
+        # now re-count enemies (since we've set our Fighter to None)
+        self.dungeon.count_enemies()
 
 
 
@@ -661,6 +675,9 @@ class Dungeon:
         # place beowulf!
         boss = Beowulf(self, x, y)
         
+        # add to dungeon!
+        _dungeon.objects.append(boss)
+        
     def count_enemies(self):
         fighters = [obj.fighter for obj in self.objects if obj.fighter]
         self.enemies_left = len(fighters) - 1 # subtract player
@@ -688,7 +705,7 @@ class Dungeon:
         # generate layout
         self.generator = dun_gen.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
-                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=5,
+                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=1,
                 random_spurs=1)
         
         self.generator.gen_level()
@@ -822,17 +839,18 @@ class Dungeon:
                     self.enemies_left += 1
                     mon_left -= 1
                     added = True
-                    tough_monster = randfloat(0, 1) <= constants.MONSTER_TOUGH
-                    bard_monster = not(tough_monster) and randfloat(0,1) <= constants.MONSTER_BARD
-                    if tough_monster:
-                        #create a tough guy
-                        monster = Warrior(self, x, y)
-                    elif bard_monster:
-                        # bard
-                        monster = Bard(self, x, y)
+                    montype = randfloat(0, 1)
+                    if montype < constants.MONSTER_SPECIAL:
+                        montype = randfloat(0, 1)
+                        if montype < constants.MONSTER_BARD:
+                            # bard
+                            monster = Bard(self, x, y)
+                        else:
+                            #create a tough guy
+                            monster = Warrior(self, x, y)
                     else:
                         #create a scout
-                        monster = Scout(self, x, y)                        
+                        monster = Scout(self, x, y)                                                
                         
                     # add monster to dungeon
                     self.objects.append(monster)
@@ -1499,16 +1517,16 @@ Bard AI
 """
 class BardNPC(NPC):
         def __init__(self, hearing = 0.1, laziness = 0.2, 
-                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.75, 
+                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.8, 
                 curses=['It hates the music!']):
                 
             # bard's music stats
             self.music_range = 4
-            self.music_power = 3
+            self.music_power = 4
             self.music_speed = 1.1
             
             # flee distance
-            self.flee_dist = 3
+            self.flee_dist = randint(2,self.music_range)
             
             self.owner = None
             

@@ -14,8 +14,9 @@ import controls
 
 import time
 
-from substrings import strleft
-from substrings import format_list
+from strutil import strleft
+from strutil import format_list
+import strutil
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -78,7 +79,6 @@ class Game:
                 savefile['timestamps'] = self.timestamps
                 savefile['turn'] = self.dungeon.turn
                 savefile['start_time'] = self.dungeon.start_time
-                savefile['beowulf'] = self.dungeon.beowulf
                 savefile['generator'] = self.dungeon.generator
         else:
             logging.info("Dead: clearing save file...")
@@ -120,7 +120,6 @@ class Game:
                     self.timestamps = savefile['timestamps']
                     self.dungeon.turn = savefile['turn']
                     self.dungeon.start_time = savefile['start_time']
-                    self.dungeon.beowulf = savefile['beowulf']
                     self.dungeon.generator = savefile['generator']
                     if self.dungeon.player.fighter.hp > 0:
                         self.state = constants.STATE_PLAYING
@@ -580,6 +579,9 @@ class Game:
         # if names:
             # logging.info(str(names))
         names = ', '.join(names)  #join the names, separated by commas
+        article = strutil.get_article(names)
+        if article:
+            return article + ' ' + names
         return names
         
     def get_items_at(self, x, y):
@@ -589,7 +591,8 @@ class Game:
         #create a list with the names of all Items at the mouse's coordinates and in FOV
         items = self.get_items_at(x, y)
         if len(items) > 0:
-            return [itm.name() for itm in items]
+            names = [itm.name() for itm in items]
+            return names
         else:
             return None
             
