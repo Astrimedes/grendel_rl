@@ -5,12 +5,12 @@ block_cipher = None
 
 a = Analysis(['main.py'],
              pathex=['C:\\Users\\Mike\\Dropbox\\CS50 Project\\roguelike'],
-             binaries=[],
-             datas=[('terminal16x16.png', '.'), ('grendel.png', '.'), ('SDL2.dll', '.')],
+             binaries=[('SDL2.dll', '.')],
+             datas=[('terminal16x16.png', '.'), ('grendel.png', '.')],
              hiddenimports=['cffi'],
              hookspath=['.'],
              runtime_hooks=[],
-             excludes=[],
+             excludes=['savegame.dat', 'savegame.bak', 'savegame.dir'],
              win_no_prefer_redirects=False,
              win_private_assemblies=False,
              cipher=block_cipher)
