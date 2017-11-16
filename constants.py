@@ -51,7 +51,7 @@ MONSTER_TOUGH = 0.55
 ENEMIES_FINAL = MONSTER_COUNT // 4
 
 # ITEMS
-ITEM_QTY = round(MONSTER_COUNT * 0.6)
+ITEM_QTY = round(MONSTER_COUNT * 0.55)
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
@@ -169,7 +169,7 @@ PART_HEALING = 'Heart'
 MIN_PDIST = 1.415
 
 # start date/time in seconds
-START_TIME = 26168400 #Oct 30, 1970 AD, 9:00 PM (convert years)
+START_TIME = 26172000 #Oct 30, 1970 AD, 9:00 PM (convert years)   26168400
 TIME_SUBTRACT_YEARS = 1522
 
 # stat bonus / penalty

@@ -257,10 +257,9 @@ class Fighter:
             
             fraction = 1 - (newhp / self.max_hp)
             
-            #cc = colors.mutate_color(colors.white, attack_color, fraction)
+            msg = '* ' + attacker_name + "'s " + weapon_name + ' ' + attack_verb + ' ' + selfname + ' for ' + str(damage) + ' damage!'
                 
-            self.owner.dungeon.game.message('* ' + attacker_name + "'s " + weapon_name + ' ' + attack_verb + 
-                  ' ' + selfname + ' for ' + str(damage) + ' damage!', attack_color)
+            self.owner.dungeon.game.message(msg, attack_color)
                   
             self.take_dmg_silent(damage)
             
@@ -269,6 +268,10 @@ class Fighter:
             
     def take_dmg_silent(self, damage):
         self.hp -= damage
+        
+        if self.owner.ai:
+            # wake up automatically (into Wander to prevent ability to atk immediately)
+            self.owner.ai.change_state(states.WANDER)
         
         #check for death. if there's a death function, call it
         if self.hp <= 0:
@@ -512,11 +515,11 @@ class Beowulf(Scout):
     def __init__(self, dungeon, x, y):
         bt_ai = BossNPC(dungeon)
         
-        bt_fighter = Fighter(hp=50, defense=4, power=10,
-            speed=1.25, death_function=self.death)
+        bt_fighter = Fighter(hp=60, defense=5, power=16,
+            speed=1, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=8, speed=-0.2,
-        attack_names=['battle axe', 'mighty axe'], 
+        weapon = Weapon(min_dmg=4, max_dmg=10, speed=-0.2,
+        attack_names=['mighty axe'], 
         attack_verbs=['cleaves', 'chops', 'carves'], 
         map_char = 'w', map_color = colors.white)
         
@@ -1139,7 +1142,7 @@ class Dungeon:
 Monster AI
 """
 class NPC:
-    def __init__(self, hearing = 0.1, laziness = 0.2, 
+    def __init__(self, hearing = 0.05, laziness = 0.2, 
             vision_range = constants.START_VISION, flee_health=0.4, flee_chance=0.75, 
             curses=['Kill the beast!', 'Destroy the monster!', 'Die, creature!']):
         
@@ -1214,6 +1217,9 @@ class NPC:
         if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
             if self.state_turns > 20 and randfloat(0,1) <= self.laziness:
                 self.change_state(states.SLEEP)
+            else:
+                self.laziness *= 1.5 # less likely to fall asleep
+                self.change_state(states.WANDER)
         # if monster sees player... 
         elif self.pdistance < constants.MAX_HEAR_DIST:
             # fov (store visible tiles)
@@ -1222,7 +1228,9 @@ class NPC:
             if self.player_in_view():
                 # strong chance to wake from sleep
                 if self.state == states.SLEEP:
-                    if randfloat(0,1) < 0.9:
+                    p_noise = (_dungeon.player.fighter.move_speed() / constants.START_SPEED) * 0.7
+                    logging.info('pnoise: %s', p_noise)
+                    if randfloat(0,1) < p_noise:
                         self.change_state(states.FIGHT)
                 # fight or flee player in view...
                 else:
@@ -1232,6 +1240,8 @@ class NPC:
                     # otherwise fight
                     else:
                         self.change_state(states.FIGHT)
+            elif not(self.state == states.SLEEP):
+                self.change_state(states.WANDER)
                     
         # record player position if visible
         if not(self.state == states.SLEEP) and self.player_in_view():
@@ -1441,6 +1451,10 @@ class NPC:
                         # set new target to noise location
                         self.target_x = noise_x
                         self.target_y = noise_y
+                # flee from sound if fleeing
+                elif self.state == states.FLEE:
+                    self.last_px = noise_x
+                    self.last_py = noise_y
                 
                 
     def change_state(self, new_state):
@@ -1448,6 +1462,10 @@ class NPC:
             return False
         
         if new_state in states.all():
+        
+            # msg for wake from sleep
+            if self.state == states.SLEEP and self.player_in_view():
+                _dungeon.game.message(self.owner.name + ' wakes up!', colors.orange)
         
             logging.info('AI change to %s from %s (%s)', states.nameof(new_state), states.nameof(self.state), self.owner.name)
             
@@ -1554,7 +1572,7 @@ Bard AI
 """
 class BardNPC(NPC):
         def __init__(self, hearing = 0.1, laziness = 0.2, 
-                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.8, 
+                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.9, 
                 curses=['It hates the music!']):
                 
             # bard's music stats
@@ -1563,7 +1581,7 @@ class BardNPC(NPC):
             self.music_speed = 1.1
             
             # flee distance
-            self.flee_dist = randint(2,self.music_range)
+            self.flee_dist = randint(3,self.music_range)
             
             self.owner = None
             
@@ -1607,40 +1625,53 @@ class BardNPC(NPC):
         def take_turn(self):
             monster = self.owner
             
-            # monster pathfinding
-            self.pdistance = _dungeon.distance_to(monster, _dungeon.player)
+            if self.state_turns > 0:
             
-            logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
-            
-            self.view = None
-            
-            # determine if it falls asleep while player far away
-            if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
-                if self.state_turns > 20 and randfloat(0,1) <= self.laziness:
-                    self.change_state(states.SLEEP)
-            # if monster sees player... 
-            elif self.pdistance < constants.MAX_HEAR_DIST:
-                # fov (store visible tiles)
-                self.view = tdl.map.quickFOV(monster.x, monster.y, is_visible_tile, radius = self.fov_radius)
-                # if player could be seen...
-                if self.player_in_view():
-                    # strong chance to wake from sleep
-                    if self.state == states.SLEEP:
-                        if randfloat(0,1) < 0.9:
-                            self.change_state(states.FIGHT)
-                    # fight or flee player in view...
+                # monster pathfinding
+                self.pdistance = _dungeon.distance_to(monster, _dungeon.player)
+                
+                logging.debug('%s: %s distance from player', self.owner.name, self.pdistance)
+                
+                self.view = None
+                
+                # determine if it falls asleep while player far away
+                if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
+                    if self.state_turns > 30 and randfloat(0,1) <= self.laziness:
+                        self.change_state(states.SLEEP)
                     else:
-                        # flee - Bard flees based on distance from player!
-                        if self.pdistance < self.flee_dist and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
-                            self.change_state(states.FLEE)
-                        # otherwise fight
+                        self.laziness *= 1.5 # less likely to fall asleep
+                        self.change_state(states.WANDER)
+                # if monster sees player... 
+                elif self.pdistance < constants.MAX_HEAR_DIST:
+                    # fov (store visible tiles)
+                    self.view = tdl.map.quickFOV(monster.x, monster.y, is_visible_tile, radius = self.fov_radius)
+                    # if player could be seen...
+                    if self.player_in_view():
+                        # strong chance to wake from sleep
+                        if self.state == states.SLEEP:
+                            p_noise = (_dungeon.player.fighter.move_speed() / constants.START_SPEED) * 0.85
+                            if randfloat(0,1) < p_noise:
+                                self.change_state(states.FIGHT)
+                        # fight or flee player in view...
                         else:
-                            self.change_state(states.FIGHT)
-                        
-            # record player position if visible
-            if not(self.state == states.SLEEP) and self.player_in_view():
-                self.last_px = _dungeon.player.x
-                self.last_py = _dungeon.player.y
+                            # flee - Bard flees based on distance from player!
+                            fleedist = self.flee_dist
+                            if self.owner.fighter.hp / self.owner.fighter.max_hp < 0.5:
+                                fleedist += constants.MIN_PDIST
+                            if len(_dungeon.combatants) > 1:
+                                fleedist -= constants.MIN_PDIST
+                            if self.pdistance < fleedist and not(self.state == states.FLEE and self.state_turns < 2) and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
+                                self.change_state(states.FLEE)
+                            # otherwise fight
+                            else:
+                                self.change_state(states.FIGHT)
+                    elif not(self.state == states.SLEEP):
+                        self.change_state(states.WANDER)
+                            
+                # record player position if visible
+                if not(self.state == states.SLEEP) and self.player_in_view():
+                    self.last_px = _dungeon.player.x
+                    self.last_py = _dungeon.player.y
                         
             # count turns in state
             self.state_turns += 1
@@ -1682,7 +1713,7 @@ class BardNPC(NPC):
                     dmg = randint(1, self.music_power)
                     shortname = (chr(14)*dmg) + ' ' + strleft_back(self.owner.name, ' the ')
                     atk_color = colors.light_flame
-                    _dungeon.player.fighter.take_damage(shortname, 'pierces', 'merry music', atk_color, dmg)
+                    _dungeon.player.fighter.take_damage(shortname, 'hurts', 'merry music', atk_color, dmg)
                     return self.music_speed
                 else:
                     _dungeon.move_astar(self.owner, self.last_px, self.last_py)
@@ -1707,7 +1738,7 @@ class BossNPC(NPC):
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
         flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
         
-        NPC.__init__(self, hearing = 0.9, laziness = 0.05, 
+        NPC.__init__(self, hearing = 0.7, laziness = 0.05, 
             vision_range = constants.START_VISION+1, flee_health=0.08, flee_chance=0.1)
             
         self.leader = True
@@ -1738,7 +1769,7 @@ class BossNPC(NPC):
         else:
             # check for using special move!
             phealth = _dungeon.player.fighter.hp / _dungeon.player.fighter.max_hp
-            try_special = 0.2
+            try_special = 0.34
             if phealth < 0.5 and self.special and randfloat(0,1) < try_special:
                 # chance to fail based on player health!
                 grab = randfloat(0,1.05) > phealth
@@ -1752,7 +1783,7 @@ class BossNPC(NPC):
                     
                     # calc dmg and announce
                     dmg = round(_dungeon.player.fighter.hp/2)
-                    _dungeon.game.message('* Beowulf tears your arm off for ' + str(dmg) + ' damage!!!', colors.light_red)
+                    _dungeon.game.message('!!! Beowulf tears your arm off for ' + str(dmg) + ' damage!!!', colors.light_red)
                     
                     # deal dmg silently to player
                     _dungeon.player.fighter.take_dmg_silent(dmg)
@@ -1760,10 +1791,15 @@ class BossNPC(NPC):
                     # equip the new weapon!
                     self.owner.fighter.weapon = arm_weapon
                 else:
-                    _dungeon.game.message('* Beowulf tries to tear your arm off, but fails!!!', colors.light_red)
+                    _dungeon.game.message('!!! Beowulf tries to tear your arm off, but fails!!!', colors.light_red)
             else:
                 #close enough, attack!
-                self.owner.fighter.attack(_dungeon.player)
+                if not(self.special): # special used - must be using grendel's arm
+                    dmg = self.owner.fighter.weapon.roll_dmg(_dungeon.player)
+                    _dungeon.game.message('!!! Beowulf bashes you with your own arm for ' + str(dmg) + ' !!!', colors.light_red)
+                    _dungeon.player.fighter.take_dmg_silent(dmg)
+                else:
+                    self.owner.fighter.attack(_dungeon.player) # normal attack text
                 #track turn
                 self.last_attack_turn = _dungeon.turn
                 
@@ -1840,6 +1876,9 @@ def bonus_speed():
     
     # boost speed
     _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + constants.SPEED_BONUS)
+    
+    # adjust weapon speed to keep atk speed the same (1.0 turn)
+    _dungeon.player.fighter.weapon.speed = -(_dungeon.player.fighter.speed - 1)
     
     _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
    

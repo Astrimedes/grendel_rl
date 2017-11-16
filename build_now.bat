@@ -1,1 +1,0 @@
-pyinstaller --clean -F grendel_dist.spec
