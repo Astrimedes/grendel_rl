@@ -14,7 +14,11 @@ class Ticker(object):
     def next_turn(self):
         things_to_do = self.schedule.pop(self.ticks, [])
         for obj in things_to_do:
-            obj.do_turn()
+            # act, return turns used
+            ticks_used = obj.do_tick()
+            # reschedule if not None
+            if ticks_used:
+                self.schedule_turn(ticks_used, obj)
             
 #    Example main program
 

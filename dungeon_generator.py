@@ -263,16 +263,19 @@ class Generator():
         
         # divide the dungeon up into 4 'regions' to generate rooms inside of
         regions = []
-        pw = self.width // 3
-        ph = self.height // 3
-        regions.append((0, 0, pw, self.height))
-        regions.append((pw, 0, pw, self.height))
-        regions.append((pw*2, 0, pw, self.height))
+        pw = (self.width // 2)
+        ph = (self.height // 2)
+        regions.append((0, 0, pw-1, ph-1))
+        regions.append((0, ph+1, pw-1, ph-2))
+        regions.append((pw+1, ph+1, pw-2, ph-2))
+        regions.append((pw+1, 0, pw-2, ph-1))
+        
         
         # 'large room' chance
         lrg_rm = 0.08
  
         # FIRST REGIONS
+        rindex = 0
         # start generating rooms in the first 'normal' regions
         max_region_rooms = self.max_rooms // 3
         max_iters = max_region_rooms * 4
@@ -300,27 +303,33 @@ class Generator():
              
                         if rr >= max_region_rooms:
                             break
- 
-        # connect the rooms thus far
-        for a in range(len(self.room_list) - 1):
-            self.join_rooms(self.room_list[a], self.room_list[a + 1])
+                    # connect the rooms in this region
+                    for a in range(rindex, len(self.room_list) - 1):
+                        self.join_rooms(self.room_list[a], self.room_list[a + 1])
+                    # connect to previous region
+                    if i > 0:
+                        r1 = self.room_list[rindex]
+                        r2 = self.room_list[random.randint(rindex+1, len(self.room_list)-1)]
+                        self.join_rooms(r1, r2)
+                    # last room in this region, for next iteration
+                    rindex = len(self.room_list)-1
  
         # do the random joins
-        for a in range(self.random_connections):
-            room_1 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            self.join_rooms(room_1, room_2)
+        # for a in range(self.random_connections):
+            # room_1 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            # room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            # self.join_rooms(room_1, room_2)
         
-        # do the spurs
-        for a in range(self.random_spurs):
-            room_1 = Room(random.randint(2, self.width - 2), random.randint(2, self.height - 2), 1, 1)
-            room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            self.join_rooms(room_1, room_2)
-            del room_1
+        # # do the spurs
+        # for a in range(self.random_spurs):
+            # room_1 = Room(random.randint(2, self.width - 2), random.randint(2, self.height - 2), 1, 1)
+            # room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
+            # self.join_rooms(room_1, room_2)
+            # del room_1
         
         # LAST REGION
         # now fill in last region with several small rooms
-        rindex = len(self.room_list)-1 # index of room previous to this region
+        #rindex = len(self.room_list)-1 # index of room previous to this region
         r = regions[last]
         sr = 0
         sr_target = 3

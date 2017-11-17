@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import colors
 
+import math
+
 #actual size of the window
 SCREEN_WIDTH = 70 # was 80
 SCREEN_HEIGHT = 52
@@ -34,14 +36,14 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
  
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 6
-ROOM_MIN_SIZE = 3
+ROOM_MAX_SIZE = 5
+ROOM_MIN_SIZE = 2
 MAX_ROOMS = 32
 
-BIGROOM_MIN_W = 4
-BIGROOM_MAX_W = 16
-BIGROOM_MIN_H = 4
-BIGROOM_MAX_H = 16
+BIGROOM_MIN_W = 6
+BIGROOM_MAX_W = 12
+BIGROOM_MIN_H = 6
+BIGROOM_MAX_H = 12
 
 # monster qty
 MONSTER_COUNT = 34  #26
@@ -51,13 +53,10 @@ MONSTER_TOUGH = 0.55
 ENEMIES_FINAL = MONSTER_COUNT // 4
 
 # ITEMS
-ITEM_QTY = round(MONSTER_COUNT * 0.55)
+ITEM_QTY = round(MONSTER_COUNT * 0.65)
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
-
-#distance at which monsters can be 'awaken' depending on their hearing and noise level
-MAX_HEAR_DIST = 25
 
 #spell values
 HEAL_AMOUNT = 18
@@ -131,20 +130,22 @@ INPUT_REPEAT_DELAY = 1.0 / (LIMIT_FPS / 2.0)
 
 # starting stat levels
 START_POWER = 7
-START_SPEED = 1.25
-START_ATK_SPEED = -0.25
+START_SPEED = 10
+START_ATK_SPEED = 8
 START_DEFENSE = 2
 START_VISION = 4
 
 # worst stat levels
 MIN_POWER = 1
 MIN_DEFENSE = 0
-MAX_SPEED = 3.0 # real stat
+MAX_SPEED = START_SPEED * 2 # real stat
+MAX_ATK_SPEED = START_ATK_SPEED * 2
 MIN_SPEED_DSP = 0.334 # inverted for display
 MIN_VISION = 1
 
 # best stat levels
-MIN_SPEED = 0.34
+MIN_SPEED = START_SPEED // 2
+MIN_ATK_SPEED = START_ATK_SPEED // 2
 
 # Display bars
 # MIN
@@ -158,6 +159,13 @@ BARMAX_SPD = (MAX_SPEED * 100)
 BARMAX_RES = MIN_DEFENSE
 BARMAX_VIS = MIN_VISION
 
+# Noise
+#distance at which monsters can be 'awaken' depending on their hearing and noise level
+MAX_HEAR_DIST = 25
+# max noise_strength
+MAX_NOISE_STR = 10
+
+
 # consumable body part names
 PART_POWER = 'Muscle'
 PART_DEFENSE = 'Torso'
@@ -166,7 +174,7 @@ PART_FOV = 'Eye'
 PART_HEALING = 'Heart'
 
 # indicates 1 tile away
-MIN_PDIST = 1.415
+MIN_PDIST = math.sqrt(2) + 0.0001
 
 # start date/time in seconds
 START_TIME = 26172000 #Oct 30, 1970 AD, 9:00 PM (convert years)   26168400
@@ -175,7 +183,7 @@ TIME_SUBTRACT_YEARS = 1522
 # stat bonus / penalty
 ### FLESH POWERUPS ###
 PEN_FRAC = 0.5
-SPEED_BONUS = -0.1
+SPEED_BONUS = -2
 SPEED_PENALTY = -SPEED_BONUS * PEN_FRAC
 POWER_BONUS = 4
 POWER_PENALTY = -POWER_BONUS * PEN_FRAC

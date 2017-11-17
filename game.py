@@ -77,9 +77,22 @@ class Game:
                 savefile['inventory'] = self.dungeon.inventory
                 savefile['messages'] = self.messages
                 savefile['timestamps'] = self.timestamps
-                savefile['turn'] = self.dungeon.turn
+                savefile['ticks'] = self.dungeon.ticks
                 savefile['start_time'] = self.dungeon.start_time
                 savefile['generator'] = self.dungeon.generator
+                
+                savefile['player_turn'] = self.dungeon.player_turn
+                
+                savefile['killed_boss'] = self.dungeon.killed_boss
+                
+                # save the turn schedule as: k=ticks, v=(array of obj index)
+                sch = dict()
+                for k, v in self.dungeon.schedule.items():
+                    sch[k] = []
+                    for obj in v:
+                        logging.info('Saving schedule: %s ticks: %s', str(k), str(obj))
+                        sch[k].append(self.dungeon.objects.index(obj))
+                savefile['schedule'] = sch
         else:
             logging.info("Dead: clearing save file...")
             shelf = shelve.open('savegame', flag='n') # clears the file by opening a new empty one
@@ -118,23 +131,36 @@ class Game:
                     self.dungeon.inventory = savefile['inventory']
                     self.messages = savefile['messages']
                     self.timestamps = savefile['timestamps']
-                    self.dungeon.turn = savefile['turn']
+                    self.dungeon.ticks = savefile['ticks']
                     self.dungeon.start_time = savefile['start_time']
                     self.dungeon.generator = savefile['generator']
-                    if self.dungeon.player.fighter.hp > 0:
-                        self.state = constants.STATE_PLAYING
-                    else:
-                        self.state = constants.STATE_DEAD
-                        self.dungeon.player.fighter.died = True
-                    # set dungeon reference
-                    for obj in self.dungeon.objects:
-                        obj.dungeon = self.dungeon
+                    
+                    self.dungeon.player_turn = savefile['player_turn']
+                    
+                    self.dungeon.killed_boss = savefile['killed_boss']
+                    
+                    # load the turn schedule as: k=ticks, v=(array of obj index)
+                    logging.info(str(savefile['schedule']))
+                    self.dungeon.schedule = dict()
+                    sch = savefile['schedule']
+                    for k, v in sch.items():
+                        self.dungeon.schedule[k] = []
+                        for idx in v:
+                            self.dungeon.schedule[k].append(self.dungeon.objects[idx])
                         
                     # fix time
                     self.dungeon.calc_date_time()
                     
                     # fix enemy count
                     self.dungeon.count_enemies()
+                    
+                    # determine current state
+                    if self.dungeon.player.fighter.hp < 1:
+                        self.state = constants.STATE_DEAD
+                    elif self.dungeon.killed_boss:
+                        self.state = constants.STATE_WON
+                    else:
+                        self.state = constants.STATE_PLAYING
                     
                     logging.debug('After Loading: %s, %s, %s', self.dungeon.inventory, self.dungeon.player, self.dungeon.map)
                     return True
@@ -181,26 +207,37 @@ class Game:
         
         while not tdl.event.is_window_closed():
             action = None
+            
+            #get time
+            newtime = time.process_time()
+            # set total time
+            self.total_time = newtime
      
-            #draw all objects in the list
+            #dungeon rendering and player input
             if self.dungeon:
-                self.render_all()
-                tdl.flush()
-                self.clear_obj_render()
-                            
-            while not(action):
-                #poll user input
-                action = self.handle_keys()
-                #get time
-                newtime = time.process_time()
-                # set total time
-                self.total_time = newtime
-                #avoid multi key presses
-                if action and not(action.description == constants.MOUSE_MOVED):
-                    delta = newtime - self.last_command_time
-                    if delta < constants.INPUT_REPEAT_DELAY:
-                        action = None
-                    self.last_command_time = newtime
+            
+                # advance time in dungoen, wait for player turn to advance to input
+                if self.state == constants.STATE_PLAYING or self.state == constants.STATE_DEAD or self.state == constants.STATE_WON:
+                
+                    # advance turns if it's not player's turn
+                    while not(self.dungeon.player_turn) and self.dungeon.player.fighter.hp > 0: 
+                        self.dungeon.next_turn()
+                        
+                    self.render_all()
+                    tdl.flush()
+                    self.clear_obj_render()
+                    
+                    while (self.dungeon.player_turn or self.state == constants.STATE_DEAD or self.state == constants.STATE_WON) and not(action):
+                        #poll user input
+                        action = self.handle_keys()
+                        #get time
+                        newtime = time.process_time()
+                        #avoid multi key presses
+                        if action and self.dungeon.player_turn and not(action.description == constants.MOUSE_MOVED):
+                            delta = newtime - self.last_command_time
+                            if delta < constants.INPUT_REPEAT_DELAY:
+                                action = None
+                            self.last_command_time = newtime
                 
             
             if not action:
@@ -208,7 +245,7 @@ class Game:
             else:
                 desc = action.description
                 
-                if self.state == constants.STATE_PLAYING:
+                if self.state == constants.STATE_PLAYING and self.dungeon.player_turn:
                     #avoid numpad's numlock-on multi key press sending 2 keys to repeat the action
                     moved = desc in [constants.MOVE_1, constants.MOVE_2, constants.MOVE_3, constants.MOVE_4, 
                         constants.MOVE_6, constants.MOVE_7, constants.MOVE_8, constants.MOVE_9]
@@ -233,14 +270,15 @@ class Game:
                                 text = format_list(names)
                                 self.message('You see: ' + text + '. Press g to take.')
                         
-                        #let monsters take their turn: during play state, when a turn has passed
+                        #reschedule next player action, switch turn flag if we passed time
                         if action.turns_used > 0:
-                            self.dungeon.ai_act(action.turns_used)
+                            self.dungeon.player_turn = False
+                            self.dungeon.schedule_turn(action.turns_used, self.dungeon.player)
                     
-                #exit if player pressed exit
-                elif self.state == constants.STATE_EXIT:
-                    self.save_game()
-                    break
+            #exit if player pressed exit
+            if self.state == constants.STATE_EXIT:
+                self.save_game()
+                break         
                     
                
      
@@ -671,7 +709,7 @@ class Game:
                     self.menu_invoked = False
                     return
             
-                logging.debug('Turn %s: Pressed key %s , text %s', self.dungeon.turn, user_input.key, user_input.text)
+                logging.debug('Turn %s: Pressed key %s , text %s', self.dungeon.ticks, user_input.key, user_input.text)
                 
                 #movement keys
                 #up left

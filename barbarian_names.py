@@ -9,13 +9,13 @@ middle_chance = 0.4
 
 forbidden = ['Beowulf', 'Hrothgar']
 
-def barb_name():
+def make_name():
     if random.uniform(0,1) < middle_chance:
         name = random.choice(_prefixes) + random.choice(_middles) + random.choice(_suffixes)
     else:
         name = random.choice(_prefixes) + random.choice(_suffixes)
     while name in forbidden:
-        name = barb_name()
+        name = make_name()
     return name
     
 if __name__ == '__main__':

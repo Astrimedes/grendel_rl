@@ -22,12 +22,15 @@ import math
 import time
 from datetime import date
 
-from barbarian_names import barb_name
+from barbarian_names import make_name
 
 from strutil import strleft_back
 from strutil import strright_back
 from strutil import format_list
 import strutil
+
+# turn counter
+from ticker import Ticker
 
 # GLOBALS #
 # logging
@@ -132,8 +135,6 @@ class GameObject:
         self.name = name
         self.blocks = blocks
         self.fighter = fighter
-        
-        self.dungeon = dungeon
  
         if self.fighter:  #let the fighter component know who owns it
             self.fighter.owner = self
@@ -145,7 +146,26 @@ class GameObject:
         self.item = item
         if self.item:  #let the Item component know who owns it
             self.item.owner = self
-
+            
+        # add self to scheduler
+        if self.uses_turns():
+            dungeon.schedule_turn(self.base_speed(), self)
+            
+    def base_speed(self):
+        if self.fighter:
+            return self.fighter.move_speed()
+            
+    def uses_turns(self):
+        return not(self.fighter is None)
+            
+    # method used to take 1 turn - override where necessary
+    def do_tick(self):
+        # if we're not dead...
+        if self.ai and self.fighter and not(self.fighter.died or self.fighter.hp < 1):
+            # act
+            ticks = self.ai.take_turn()
+            # schedule
+            _dungeon.schedule_turn(ticks, self)
 """
 Healing item
 """
@@ -197,7 +217,7 @@ A creature's combat representation: hp, power, attack, take_dmg etc
 """
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, speed=1, death_function=None, weapon=None):
+    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -206,7 +226,7 @@ class Fighter:
         self.owner = None
         self.died = False
         
-        self.weapon = None
+        self.weapon = weapon
         
         # used to determine when to act
         self.speed = speed
@@ -216,21 +236,18 @@ class Fighter:
         return self.speed
         
     def attack_speed(self):
-        if self.weapon:
-            return self.speed + self.weapon.speed
-        else:
-            return self.speed
+        return self.weapon.speed
         
     def pass_time(self):
         if self.owner.ai:
             t = self.move_speed()
             if self.owner.ai.pdistance <= constants.MIN_PDIST and self.owner.fighter.weapon:
                 t = self.attack_speed()
-            while self.owner.dungeon.turn - self.last_turn >= t:
+            while _dungeon.turn - self.last_turn >= t:
                 self.last_turn += self.owner.ai.take_turn()
                 logging.debug('%s ai.take_turn()', self.owner.name)
         else:
-            self.last_turn = self.owner.dungeon.turn
+            self.last_turn = _dungeon.turn
             logging.debug('%s - No ai - set last_turn = %s', self.owner.name, self.last_turn)
             
     def set_health_color(self):
@@ -259,11 +276,11 @@ class Fighter:
             
             msg = '* ' + attacker_name + "'s " + weapon_name + ' ' + attack_verb + ' ' + selfname + ' for ' + str(damage) + ' damage!'
                 
-            self.owner.dungeon.game.message(msg, attack_color)
+            _dungeon.game.message(msg, attack_color)
                   
             self.take_dmg_silent(damage)
             
-            if self.owner == self.owner.dungeon.player:
+            if self.owner == _dungeon.player:
                 self.set_health_color()
             
     def take_dmg_silent(self, damage):
@@ -282,7 +299,7 @@ class Fighter:
                 
     def attack(self, target):
     
-        logging.info('Turn ' + str(round(_dungeon.turn,2)) + ', Last Turn: ' + str(self.last_turn) + ", " + self.owner.name + ' attacks ' + target.name)
+        logging.info('Turn ' + str(_dungeon.ticks) + ', Last Turn: ' + str(self.last_turn) + ", " + self.owner.name + ' attacks ' + target.name)
     
         if not self.weapon:
             logging.debug('%s No weapon equipped', self.owner.name)
@@ -292,7 +309,7 @@ class Fighter:
             damage = self.weapon.roll_dmg(self, target.fighter)
             
         atk_color = colors.light_red
-        if self.owner == self.owner.dungeon.player:
+        if self.owner == _dungeon.player:
             atk_color = colors.light_blue
         
         shortname = strleft_back(self.owner.name, ' the ')
@@ -303,7 +320,7 @@ class Fighter:
             else:
                 target.fighter.take_damage(shortname, self.weapon.atk_verb(), self.weapon.atk_name(), atk_color, damage)
         else:
-            self.owner.dungeon.game.message('* ' + shortname + "'s " + self.weapon.atk_name() + ' ' + self.weapon.atk_verb() + ' ' + target.name + 
+            _dungeon.game.message('* ' + shortname + "'s " + self.weapon.atk_name() + ' ' + self.weapon.atk_verb() + ' ' + target.name + 
                   ' but it has no effect!')
  
     def heal(self, amount):
@@ -324,9 +341,9 @@ class Player(GameObject):
         fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
                                     speed=constants.START_SPEED, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=6, speed=constants.START_ATK_SPEED, 
-        attack_names=['claws'], 
-        attack_verbs=['rake', 'slash', 'slice'], 
+        weapon = Weapon(min_dmg=4, max_dmg=7, speed=constants.START_ATK_SPEED, 
+        attack_names=['claws','teeth'], 
+        attack_verbs=['tear', 'pierce'], 
         map_char = 'w', map_color = colors.white)
         
         fighter_component.weapon = weapon
@@ -343,14 +360,27 @@ class Player(GameObject):
                         
     def death(self):
         #the game ended!
-        self.dungeon.game.message('You died!', colors.red)
-        self.dungeon.game.state = constants.STATE_DEAD
+        _dungeon.game.message('You died!', colors.red)
+        _dungeon.game.state = constants.STATE_DEAD
         
-        logging.info('Died! State:%s, Player_Died:%s', self.dungeon.game.state, self.dungeon.player.fighter.died)
+        logging.info('Died! State:%s, Player_Died:%s', _dungeon.game.state, _dungeon.player.fighter.died)
      
         #for added effect, transform the player into a corpse!
         self.char = '%'
         self.color = constants.color_dead
+        
+    def do_tick(self):
+        #if we're not dead
+        if self.fighter and not(self.fighter.died or self.fighter.hp < 1):
+            # just set player turn to True for player - outer game loop will run rendering while waiting for player input
+            _dungeon.player_turn = True
+            # (player reschedules self after acting in Game)
+            
+            # sort player inventory
+            _dungeon.inventory = sorted(_dungeon.inventory)
+            
+            # recalc visible enemies
+            _dungeon.calc_visible_enemies()
 
 """
 Weak enemy (GameObject)
@@ -364,9 +394,9 @@ class Scout(GameObject):
         barb_ai = NPC()
             
         barb_fighter = Fighter(hp=8, defense=1, power=3, 
-            speed=1, death_function=self.death)
+            speed=8, death_function=self.death)
         
-        weapon = Weapon(min_dmg=2, max_dmg=4, speed=0, 
+        weapon = Weapon(min_dmg=2, max_dmg=4, speed=8, 
         attack_names=['sword'], 
         attack_verbs=['slashes', 'stabs'], 
         map_char = 'w', map_color = colors.white)
@@ -376,14 +406,14 @@ class Scout(GameObject):
         # objects that drop upon death
         self.drop_objects = []
                  
-        GameObject.__init__(self, dungeon, x, y, 's', barb_name() + ' the Scout', colors.dark_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 's', make_name() + ' the Scout', colors.dark_orange, blocks=True, 
                  fighter=barb_fighter, ai=barb_ai, item=None)
                  
                  
     def death(self):    
         #transform it into a nasty corpse! it doesn't block, can't be
         #attacked and doesn't move
-        self.dungeon.game.message(self.name + 
+        _dungeon.game.message(self.name + 
             choice([' dies!', 
             ' is destroyed!', 
             " dies screaming!"]), colors.orange)
@@ -410,7 +440,7 @@ class Scout(GameObject):
         _dungeon.game.sort_obj_at(self.x, self.y)
         
         # now re-count enemies (since we've set our Fighter to None)
-        self.dungeon.count_enemies()
+        _dungeon.count_enemies()
         
         
 """
@@ -424,9 +454,9 @@ class Warrior(Scout):
         bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3)
         
         bt_fighter = Fighter(hp=14, defense=3, power=6,
-            speed=1.5, death_function=self.death)
+            speed=14, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=8, speed=-0.4, 
+        weapon = Weapon(min_dmg=3, max_dmg=6, speed=8, 
         attack_names=['greataxe'], 
         attack_verbs=['chops', 'carves'], 
         map_char = 'w', map_color = colors.white)
@@ -436,7 +466,7 @@ class Warrior(Scout):
         # objects that drop upon death
         self.drop_objects = []
         
-        GameObject.__init__(self, dungeon, x, y, 'W', barb_name() + ' the Warrior', colors.dark_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'W', make_name() + ' the Warrior', colors.dark_orange, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
                  
@@ -450,9 +480,9 @@ class Bard(Scout):
         bard_ai = BardNPC()
             
         bard_fighter = Fighter(hp=5, defense=1, power=2, 
-            speed=1.2, death_function=self.death)
+            speed=10, death_function=self.death)
         
-        weapon = Weapon(min_dmg=1, max_dmg=2, speed=0, 
+        weapon = Weapon(min_dmg=1, max_dmg=2, speed=7, 
         attack_names=['knife'], 
         attack_verbs=['pricks'], 
         map_char = 'w', map_color = colors.white)
@@ -462,7 +492,7 @@ class Bard(Scout):
         # objects that drop upon death
         self.drop_objects = []
         
-        GameObject.__init__(self, dungeon, x, y, 'b', barb_name() + ' the Bard', colors.darkest_orange, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'b', make_name() + ' the Bard', colors.darkest_orange, blocks=True, 
                  fighter=bard_fighter, ai=bard_ai, item=None)
                  
                  
@@ -471,7 +501,7 @@ class Bard(Scout):
         
         #transform it into a nasty corpse! it doesn't block, can't be
         #attacked and doesn't move
-        self.dungeon.game.message(self.name + 
+        _dungeon.game.message(self.name + 
             choice([' dies!', 
             ' is silenced for good!']), colors.orange)
             
@@ -503,7 +533,7 @@ class Bard(Scout):
         _dungeon.game.sort_obj_at(self.x, self.y)
         
         # now re-count enemies (since we've set our Fighter to None)
-        self.dungeon.count_enemies()
+        _dungeon.count_enemies()
 
 
 
@@ -513,14 +543,14 @@ The Boss enemy (GameObject)
 class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
-        bt_ai = BossNPC(dungeon)
+        bt_ai = Beowulf_NPC(dungeon)
         
         bt_fighter = Fighter(hp=60, defense=5, power=16,
-            speed=1, death_function=self.death)
+            speed=7, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=10, speed=-0.2,
-        attack_names=['mighty axe'], 
-        attack_verbs=['cleaves', 'chops', 'carves'], 
+        weapon = Weapon(min_dmg=4, max_dmg=10, speed=7,
+        attack_names=['strong limbs'], 
+        attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)
         
         bt_fighter.weapon = weapon
@@ -533,10 +563,11 @@ class Beowulf(Scout):
                  
                  
     def death(self):    
-        self.dungeon.game.message('Beowulf roars one last time as the blood drains from his body and he falls down dead.', colors.orange)
-        self.dungeon.game.message('Their hero is dead!  Your war is won.', colors.green)
+        _dungeon.game.message('Beowulf roars one last time as the blood drains from his body and he falls down dead.', colors.orange)
+        _dungeon.game.message('Their hero is dead!  Your war is won.', colors.green)
         
-        self.dungeon.game.state = constants.STATE_WON
+        _dungeon.game.state = constants.STATE_WON
+        _dungeon.killed_boss = True
         
         # transform to corpse
         self.name = 'corpse of ' + self.name
@@ -554,7 +585,7 @@ class Beowulf(Scout):
 Contains attack stats and attack names for a Fighter
 """
 class Weapon(Item):
-    def __init__(self, min_dmg=1, max_dmg=6, speed=0, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits'], map_char = 'w', map_color = colors.white):
+    def __init__(self, min_dmg=1, max_dmg=6, speed=16, attack_names=['club','medium stick', 'bat'], attack_verbs=['bashes','bonks','hits'], map_char = 'w', map_color = colors.white):
         
         Item.__init__(self)
         
@@ -633,15 +664,51 @@ class Dungeon:
         self.visible_tiles = []
         self.level = 1
         
-        # keeps track of turns passed (use monster/player speed to check when to act)
-        self.start_time = constants.START_TIME + randint(0, 10800)
-        self.turn = 0
-        self.calc_date_time() #set initial time values
-        
         self.combatants = []
         self.visible_enemies = []
-        
+
         self.enemies_left = 0
+        
+        # start on turn 0
+        self.ticks = 0
+        # dict of things to do {ticks: [gameobj1, gameobj2, ...], ticks+1: [...], ...}
+        self.schedule = {}
+        
+        # keeps track of 'real time'
+        self.start_time = constants.START_TIME + randint(0, 10800)
+        self.calc_date_time() #set initial time values
+        
+        self.player_turn = False
+        
+        self.killed_boss = False
+
+    def schedule_turn(self, interval, obj):
+        self.schedule.setdefault(self.ticks + interval, []).append(obj)
+
+    def next_turn(self):
+        acted = False
+        while not(acted):
+            # advance ticks
+            self.ticks += 1
+            logging.info('%s ticks passed in dungeon', self.ticks)
+            
+            # date / time strings from turn count
+            self.calc_date_time()
+        
+            things_to_do = self.schedule.pop(self.ticks, [])
+            if things_to_do:
+                acted = True
+                for obj in things_to_do:
+                    # act
+                    obj.do_tick()
+                    
+                    # determine which monsters player is near or in combat with (ai uses in decisions)
+                    self.combatants.clear()
+                    fighters = [obj.fighter for obj in self.visible_enemies if obj.fighter]
+                    for ftr in fighters:
+                        if ftr != self.player.fighter and self.distance2(_dungeon.player.x, _dungeon.player.y, ftr.owner.x, ftr.owner.y) < 9:
+                            self.combatants.append(ftr)
+            
 
     def create_player(self):
         if self.player:
@@ -649,7 +716,7 @@ class Dungeon:
     
         self.player = Player(self, 0, 0)
         
-        # player creates the objects list when made 'new'
+        # add to objects list
         self.objects.append(self.player)
         
         # give the player some items
@@ -727,11 +794,13 @@ class Dungeon:
                     t.block_sight = False
                     
         # find furthest left room for player
-        minx = constants.MAP_WIDTH
+        minx = 0
+        miny = 0
         p_room = None
         for r in self.generator.room_list:
-            if r.x < minx:
+            if r.x >= minx and r.y >= miny:
                 minx = r.x
+                miny = r.y
                 p_room = r
         # only add player to this room
         pt = (1, 0)
@@ -1061,36 +1130,10 @@ class Dungeon:
         monsters = [obj.ai for obj in self.objects if obj.ai]
         for m in monsters:
             m.hear_noise(x,y,volume)
-        
-    def ai_act(self, turns_passed):
-        # sort player inventory
-        self.inventory = sorted(self.inventory)
-    
-        # advance dungeon 'clock'
-        self.turn += turns_passed
-        logging.info('%s turns passed in dungeon', self.turn)
-        
-        # date / time strings from turn count
-        self.calc_date_time()
-        
-        # ai acts based on current turns passed
-        for ftr in [obj.fighter for obj in self.objects if obj.fighter]:
-            # ai will take turns, player will only update last_turn counter
-            ftr.pass_time()
-            
-        # recalc visible enemies
-        self.calc_visible_enemies()   
-        
-        # determine which monsters player is near or in combat with (ai uses in decisions)
-        self.combatants.clear()
-        fighters = [obj.fighter for obj in self.visible_enemies if obj.fighter]
-        for ftr in fighters:
-            if ftr != self.player.fighter and self.distance2(_dungeon.player.x, _dungeon.player.y, ftr.owner.x, ftr.owner.y) < 9:
-                self.combatants.append(ftr)
             
     def calc_date_time(self):
         # time of day (dungeon turn)
-        seconds = float(self.start_time + round(self.turn * 6.0))
+        seconds = float(self.start_time + (self.ticks/4))
         stime = time.gmtime(seconds)
         # day, month, year (year is offset from 1970 in order to use normal date-time structs)
         self.date_string = time.strftime("%d %b", stime) + ', ' + str(int(stime[0] - constants.TIME_SUBTRACT_YEARS)) + ' AD'
@@ -1185,6 +1228,9 @@ class NPC:
         # fight shouts
         self.curses = curses
         
+        # whether they've shouted at the player yet or not
+        self.cursed = False
+        
         
     """
     Whether the player is currently in view of the monster
@@ -1228,9 +1274,9 @@ class NPC:
             if self.player_in_view():
                 # strong chance to wake from sleep
                 if self.state == states.SLEEP:
-                    p_noise = (_dungeon.player.fighter.move_speed() / constants.START_SPEED) * 0.7
+                    p_noise = ((constants.START_VISION / _dungeon.player.fov) * 0.7) + self.hearing
                     logging.info('pnoise: %s', p_noise)
-                    if randfloat(0,1) < p_noise:
+                    if randfloat(0,0.99) < p_noise:
                         self.change_state(states.FIGHT)
                 # fight or flee player in view...
                 else:
@@ -1313,7 +1359,13 @@ class NPC:
     """
     def take_movetarget(self):
         # do we need a new target?
-        if not(self.target_x and self.target_y) or (self.owner.x,self.owner.y) == (self.target_x,self.target_y):
+        newtarget = not(self.target_x and self.target_y) or ((self.owner.x,self.owner.y) == (self.target_x,self.target_y))
+        if not(newtarget):
+            # check for being 1 square away and blocked
+            if _dungeon.distance(self.owner.x, self.owner.y, self.target_x, self.target_y) <= constants.MIN_PDIST:
+                newtarget = _dungeon.is_blocked(self.target_x, self.target_y)
+        
+        if newtarget:
             # set random wander dest
             if self.state == states.WANDER:
                 self.set_wander_target()
@@ -1330,7 +1382,8 @@ class NPC:
             self.set_wander_target()
             
         # now we should have target coordinates...
-        _dungeon.move_astar(self.owner, self.target_x, self.target_y, 9999)
+        if self.target_x and self.target_y:
+            _dungeon.move_astar(self.owner, self.target_x, self.target_y, 9999)
         
         return self.owner.fighter.move_speed()
         
@@ -1439,13 +1492,23 @@ class NPC:
     noise_strength is expected to be a float in the range of 0 -> constants.MAX_HEAR_DIST (larger = louder)
     """
     def hear_noise(self, noise_x, noise_y, noise_strength):
-        dist = max(_dungeon.distance(self.owner.x, self.owner.y, noise_x, noise_y),1)
+        dist = max(_dungeon.distance(self.owner.x, self.owner.y, noise_x, noise_y),0.01)
         if dist < constants.MAX_HEAR_DIST:
-            if self.hearing >= (noise_strength / dist):
+            if dist > 1:
+                noise_pwr = (noise_strength / (dist))
+                dc = 1 - ((constants.MAX_NOISE_STR - noise_pwr) / constants.MAX_NOISE_STR)
+            else:
+                dc = 1 #automatically hear it
+            logging.info('noise dc: %s', dc)
+            if randfloat(0,1) - self.hearing < dc:
+                # set a new target
+                self.target_x = noise_x
+                self.target_y = noise_y
+                # treat as fight if waking from sleep
                 if self.state == states.SLEEP:
-                    self.change_state(states.WANDER)
-                    self.target_x = noise_x
-                    self.target_y = noise_y
+                    self.change_state(states.FIGHT)
+                    self.last_px = noise_x
+                    self.last_py = noise_y
                 elif self.state == states.WANDER:
                     if _dungeon.distance(self.owner.x, self.owner.y, self.target_x, self.target_y) > dist:
                         # set new target to noise location
@@ -1530,11 +1593,13 @@ class NPC:
         
         # check for blocked
         invalid = True
-        while invalid:
+        tries = 0
+        while invalid and tries < 100:
             # new coordinates
             x = randint(xmin, xmax)
             y = randint(ymin, ymax)
             invalid = _dungeon.is_blocked(x,y)
+            tries += 1            
             
         # set new coordinates
         if not(invalid):
@@ -1543,19 +1608,33 @@ class NPC:
             
     # Fight! (return turns used)
     def take_fight(self):
+        just_shouted = False
+        # shout a curse at player
+        if not(self.cursed) and self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+            _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+            # shout makes a noise!
+            _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
+            self.cursed = True
+            just_shouted = True
+    
         #move towards player if not close enough to strike
         if self.pdistance > constants.MIN_PDIST:
             # check for state change to wander
-            if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+            if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
                 self.change_state(states.WANDER)
                 return self.take_movetarget()
-                
-            # shout a curse at player
-            if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
-                _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
-                # shout makes a noise!
-                _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
-        
+            
+            # determine whether to wait for player to approach or approach yourself
+            wait_chance = 0.44
+            if len(_dungeon.combatants) < 2 and self.pdistance < 4 and randfloat(0,1) < wait_chance:
+                if not(just_shouted):
+                    # shout to attract allies
+                    _dungeon.game.message(self.owner.name + ' shouts "Fight me, monster!"', colors.light_violet)
+                    # shout makes a noise!
+                    _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
+                # wait
+                return self.owner.fighter.move_speed()
+            
             #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.last_px, self.last_py)
             #return turns used
@@ -1564,7 +1643,7 @@ class NPC:
             #close enough, attack!
             self.owner.fighter.attack(_dungeon.player)
             #track turn
-            self.last_attack_turn = _dungeon.turn
+            self.last_attack_turn = _dungeon.ticks
             return self.owner.fighter.attack_speed()
 
 """
@@ -1572,16 +1651,16 @@ Bard AI
 """
 class BardNPC(NPC):
         def __init__(self, hearing = 0.1, laziness = 0.2, 
-                vision_range = constants.START_VISION+1, flee_health=0.7, flee_chance=0.9, 
+                vision_range = 5, flee_health=0.8, flee_chance=0.95, 
                 curses=['It hates the music!']):
                 
             # bard's music stats
             self.music_range = 4
             self.music_power = 3
-            self.music_speed = 1.1
+            self.music_speed = 9
             
             # flee distance
-            self.flee_dist = randint(3,self.music_range)
+            self.flee_dist = self.music_range
             
             self.owner = None
             
@@ -1622,6 +1701,8 @@ class BardNPC(NPC):
             # fight shouts
             self.curses = curses
             
+            self.cursed = False
+            
         def take_turn(self):
             monster = self.owner
             
@@ -1649,8 +1730,9 @@ class BardNPC(NPC):
                     if self.player_in_view():
                         # strong chance to wake from sleep
                         if self.state == states.SLEEP:
-                            p_noise = (_dungeon.player.fighter.move_speed() / constants.START_SPEED) * 0.85
-                            if randfloat(0,1) < p_noise:
+                            p_noise = ((constants.START_VISION / _dungeon.player.fov) * 0.7) + self.hearing
+                            logging.info('pnoise: %s', p_noise)
+                            if randfloat(0,0.99) < p_noise:
                                 self.change_state(states.FIGHT)
                         # fight or flee player in view...
                         else:
@@ -1693,19 +1775,19 @@ class BardNPC(NPC):
                 
         # Fight! (return turns used)
         def take_fight(self):
+            # shout a curse at player
+            if not(self.cursed) and self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+                _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+                # shout makes a noise!
+                _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
+                self.cursed = True
             
             #move towards player if not close enough to strike
             if self.pdistance > constants.MIN_PDIST:
                 # check for state change to wander
-                if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+                if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
                     self.change_state(states.WANDER)
                     return self.take_movetarget()
-                    
-                # shout a curse at player
-                if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
-                    _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
-                    # shout makes a noise!
-                    _dungeon.make_noise(self.owner.x, self.owner.y, randint(5,10))
             
                 # see if we need to move in range of music...
                 if self.pdistance <= self.music_range and self.player_in_view():
@@ -1714,6 +1796,8 @@ class BardNPC(NPC):
                     shortname = (chr(14)*dmg) + ' ' + strleft_back(self.owner.name, ' the ')
                     atk_color = colors.light_flame
                     _dungeon.player.fighter.take_damage(shortname, 'hurts', 'merry music', atk_color, dmg)
+                    #track turn
+                    self.last_attack_turn = _dungeon.ticks
                     return self.music_speed
                 else:
                     _dungeon.move_astar(self.owner, self.last_px, self.last_py)
@@ -1723,7 +1807,7 @@ class BardNPC(NPC):
                 #forced to attack with bad dagger weapon
                 self.owner.fighter.attack(_dungeon.player)
                 #track turn
-                self.last_attack_turn = _dungeon.turn
+                self.last_attack_turn = _dungeon.ticks
                 return self.owner.fighter.attack_speed()
         
         
@@ -1731,9 +1815,9 @@ class BardNPC(NPC):
             
         
 """
-Monster AI (tough monster)
+Beowulf with special move
 """
-class BossNPC(NPC):
+class Beowulf_NPC(NPC):
     #AI for boss monster
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
         flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
@@ -1746,21 +1830,21 @@ class BossNPC(NPC):
         # if allowed to use special...
         self.special = True
         
-        
     # Fight - with special move! (return turns used)
     def take_fight(self):
+         # shout a curse at player
+        if not(self.cursed) and self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
+            _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
+            # shout makes a noise!
+            _dungeon.make_noise(self.owner.x, self.owner.y, 10)
+            self.cursed = True
+    
         #move towards player if not close enough to strike
         if self.pdistance > constants.MIN_PDIST:
             # check for state change to wander
-            if self.state_turns > 10 and _dungeon.turn - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
+            if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
                 self.change_state(states.WANDER)
                 return self.take_movetarget()
-                
-            # shout a curse at player
-            if self.state_turns < 2 and self.pdistance <= _dungeon.player.fov:
-                _dungeon.game.message(self.owner.name + ' shouts "' + choice(self.curses) + '"', colors.light_violet)
-                # shout makes a noise!
-                _dungeon.make_noise(self.owner.x, self.owner.y, 10)
         
             #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
             _dungeon.move_astar(self.owner, self.last_px, self.last_py)
@@ -1777,13 +1861,13 @@ class BossNPC(NPC):
                     self.special = False
                     # make arm weapon based on player stats!
                     arm_weapon = Weapon(min_dmg=round(_dungeon.player.fighter.power/4), max_dmg=_dungeon.player.fighter.power+3, 
-                    speed=0, attack_names=["Grendel's arm"], attack_verbs=['bashes'], map_char = 'w', map_color = colors.green)
+                    speed=7, attack_names=["Grendel's arm"], attack_verbs=['bashes'], map_char = 'w', map_color = colors.green)
                     # reduce player stats!
                     _dungeon.player.fighter.power = round(_dungeon.player.fighter.power / 2)
                     
                     # calc dmg and announce
-                    dmg = round(_dungeon.player.fighter.hp/2)
-                    _dungeon.game.message('!!! Beowulf tears your arm off for ' + str(dmg) + ' damage!!!', colors.light_red)
+                    dmg = round(max(_dungeon.player.fighter.hp/2,1))
+                    _dungeon.game.message('!!! Beowulf tears your arm from the socket! You feel very weak...', colors.light_red)
                     
                     # deal dmg silently to player
                     _dungeon.player.fighter.take_dmg_silent(dmg)
@@ -1791,17 +1875,17 @@ class BossNPC(NPC):
                     # equip the new weapon!
                     self.owner.fighter.weapon = arm_weapon
                 else:
-                    _dungeon.game.message('!!! Beowulf tries to tear your arm off, but fails!!!', colors.light_red)
+                    _dungeon.game.message('! Beowulf pulls on your arm...', colors.light_red)
             else:
                 #close enough, attack!
                 if not(self.special): # special used - must be using grendel's arm
-                    dmg = self.owner.fighter.weapon.roll_dmg(_dungeon.player)
-                    _dungeon.game.message('!!! Beowulf bashes you with your own arm for ' + str(dmg) + ' !!!', colors.light_red)
+                    dmg = self.owner.fighter.weapon.roll_dmg(self.owner.fighter, _dungeon.player.fighter)
+                    _dungeon.game.message('! Beowulf bashes you with your own arm for ' + str(dmg) + ' !!!', colors.light_red)
                     _dungeon.player.fighter.take_dmg_silent(dmg)
                 else:
                     self.owner.fighter.attack(_dungeon.player) # normal attack text
-                #track turn
-                self.last_attack_turn = _dungeon.turn
+            #track turn
+            self.last_attack_turn = _dungeon.ticks
                 
             return self.owner.fighter.attack_speed()
     
@@ -1875,11 +1959,12 @@ def bonus_speed():
     penalty_power()
     
     # boost speed
-    _dungeon.player.fighter.speed = max(constants.MIN_SPEED, _dungeon.player.fighter.speed + constants.SPEED_BONUS)
     
-    # adjust weapon speed to keep atk speed the same (1.0 turn)
-    _dungeon.player.fighter.weapon.speed = -(_dungeon.player.fighter.speed - 1)
-    
+    # move
+    _dungeon.player.fighter.speed = int(max(constants.MIN_SPEED, _dungeon.player.fighter.speed + constants.SPEED_BONUS))
+    # atk
+    _dungeon.player.fighter.weapon.speed = int(max(constants.MIN_ATK_SPEED, _dungeon.player.fighter.weapon.speed + constants.SPEED_BONUS))
+        
     _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
    
     #try_penalty(penalty_vision, penalty_power, penalty_defense)
@@ -1889,7 +1974,11 @@ def bonus_speed():
 Penalty to Speed method
 """
 def penalty_speed():
-    _dungeon.player.fighter.speed = min(_dungeon.player.fighter.speed + constants.SPEED_PENALTY, constants.MAX_SPEED)
+    # move speed
+    _dungeon.player.fighter.speed = int(min(_dungeon.player.fighter.speed + constants.SPEED_PENALTY, constants.MAX_SPEED))
+    # atk speed
+    _dungeon.player.fighter.weapon.speed = int(min(_dungeon.player.fighter.weapon.speed + constants.SPEED_PENALTY, constants.MAX_ATK_SPEED))
+    
     _dungeon.game.message("Eating the " + constants.PART_POWER + " makes you feel slower, too.", COLOR_PENALTY)
     
 """
