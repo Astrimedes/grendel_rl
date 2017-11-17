@@ -161,11 +161,14 @@ class GameObject:
     # method used to take 1 turn - override where necessary
     def do_tick(self):
         # if we're not dead...
-        if self.ai and self.fighter and not(self.fighter.died or self.fighter.hp < 1):
-            # act
-            ticks = self.ai.take_turn()
-            # schedule
-            _dungeon.schedule_turn(ticks, self)
+        if self.fighter and not(self.fighter.died or self.fighter.hp < 1):
+            # fighter advance timing for anything time dependent (health bar fade)
+            self.fighter.pass_time()
+            if self.ai:
+                # act
+                ticks = self.ai.take_turn()
+                # schedule
+                _dungeon.schedule_turn(ticks, self)
 """
 Healing item
 """
@@ -232,6 +235,10 @@ class Fighter:
         self.speed = speed
         self.last_turn = 0
         
+        # tracks the last damage or heal (for render bar purposes)
+        self.last_health_change = 0
+        self.lhc_turns = 0
+        
     def move_speed(self):
         return self.speed
         
@@ -239,16 +246,8 @@ class Fighter:
         return self.weapon.speed
         
     def pass_time(self):
-        if self.owner.ai:
-            t = self.move_speed()
-            if self.owner.ai.pdistance <= constants.MIN_PDIST and self.owner.fighter.weapon:
-                t = self.attack_speed()
-            while _dungeon.turn - self.last_turn >= t:
-                self.last_turn += self.owner.ai.take_turn()
-                logging.debug('%s ai.take_turn()', self.owner.name)
-        else:
-            self.last_turn = _dungeon.turn
-            logging.debug('%s - No ai - set last_turn = %s', self.owner.name, self.last_turn)
+        if self.lhc_turns > 0:
+            self.lhc_turns -= 1
             
     def set_health_color(self):
         # set color according to health
@@ -284,7 +283,10 @@ class Fighter:
                 self.set_health_color()
             
     def take_dmg_silent(self, damage):
-        self.hp -= damage
+        self.last_health_change = -damage
+        self.lhc_turns = 3
+        
+        self.hp = max(0, self.hp - damage)
         
         if self.owner.ai:
             # wake up automatically (into Wander to prevent ability to atk immediately)
@@ -324,6 +326,10 @@ class Fighter:
                   ' but it has no effect!')
  
     def heal(self, amount):
+        # track previous health amount for render bar
+        self.last_health_change = amount
+        self.lhc_turns = 3
+        
         #heal by the given amount, without going over the maximum
         self.hp += amount
         if self.owner == _dungeon.player:
@@ -370,6 +376,8 @@ class Player(GameObject):
         self.color = constants.color_dead
         
     def do_tick(self):
+        # fighter maintenance
+        GameObject.do_tick(self)
         #if we're not dead
         if self.fighter and not(self.fighter.died or self.fighter.hp < 1):
             # just set player turn to True for player - outer game loop will run rendering while waiting for player input
@@ -793,12 +801,12 @@ class Dungeon:
                     t.blocked = False
                     t.block_sight = False
                     
-        # find furthest left room for player
-        minx = 0
+        # find furthest left,bottom room for player
+        minx = constants.MAP_WIDTH
         miny = 0
         p_room = None
         for r in self.generator.room_list:
-            if r.x >= minx and r.y >= miny:
+            if r.x <= minx and r.y >= miny:
                 minx = r.x
                 miny = r.y
                 p_room = r

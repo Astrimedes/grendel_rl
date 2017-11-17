@@ -790,15 +790,46 @@ class Game:
     
     ### RENDERING ###
     def render_bar(self, x, y, total_width, name, value, minimum, maximum, bar_color, back_color):
-        #render a bar (HP, experience, etc). first calculate the width of the bar
-        bar_width = int((float(value)-minimum) / maximum * total_width)
      
         #render the background first
         self.status_panel.draw_rect(x, y, total_width, 1, None, bg=back_color)
+        
+        # get length of main bar
+        # if value == 0:
+            # curr_bar_width = 0
+        # else:
+            # curr_bar_width = max(1, int((float(value)-minimum) / maximum * total_width))
+        curr_bar_width = max(int((float(value)) / maximum * total_width), minimum)
+        
+        # render any 'last health change'
+        if self.dungeon.player.fighter.lhc_turns > 0:
+            change = self.dungeon.player.fighter.last_health_change
+            bar_width = max(1, int((float(value-change)-minimum) / maximum * total_width))
+            if bar_width > 0:
+                # heal
+                if change > 0:
+                    c = colors.dark_green
+                    # swap bar widths to show healing amount
+                    curr = curr_bar_width
+                    curr_bar_width = bar_width
+                    bar_width = curr
+                    # guarantee diff
+                    if bar_width == curr_bar_width:
+                        curr_bar_width -= 1
+                # dmg
+                else:
+                    # indicate dmg amount
+                    c = colors.red
+                    # guarantee diff
+                    if bar_width == curr_bar_width:
+                        bar_width += 1
+                # draw
+                self.status_panel.draw_rect(x, y, bar_width, 1, None, bg=c)
      
         #now render the bar on top
-        if bar_width > 0:
-            self.status_panel.draw_rect(x, y, bar_width, 1, None, bg=bar_color)
+        #render a bar (HP, experience, etc). first calculate the width of the bar
+        if curr_bar_width > 0:
+            self.status_panel.draw_rect(x, y, curr_bar_width, 1, None, bg=bar_color)
      
         #finally, some centered text with the values
         text = name + ': ' + str(value) + '/' + str(maximum)
@@ -985,7 +1016,7 @@ class Game:
         self.drawtitle_stats('Grendel', y, fgcolor=tcolor)
         #show player's hp bar
         y += 1
-        self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 0, self.dungeon.player.fighter.max_hp,
+        self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 1, self.dungeon.player.fighter.max_hp,
             self.dungeon.player.fighter.get_health_color(), colors.darkest_red)
         
         # show character stats
