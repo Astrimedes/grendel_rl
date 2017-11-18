@@ -34,7 +34,7 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 
 # inventory
 INVENTORY_WIDTH = 50
- 
+
 #parameters for dungeon generator
 ROOM_MAX_SIZE = 5
 ROOM_MIN_SIZE = 2
@@ -53,13 +53,13 @@ MONSTER_TOUGH = 0.55
 ENEMIES_FINAL = MONSTER_COUNT // 4
 
 # ITEMS
-ITEM_QTY = round(MONSTER_COUNT * 0.65)
+ITEM_QTY = 17
 
 #monster pathing
 DEFAULT_PATHSIZE = 25
 
 #spell values
-HEAL_AMOUNT = 18
+HEAL_AMOUNT = 20
 LIGHTNING_DAMAGE = 20
 LIGHTNING_RANGE = 5
 FIREBALL_RADIUS = 3
@@ -126,7 +126,7 @@ PICK_UP = 'picked up'
 DROP = 'drop'
 MOUSE_MOVED = 'mouse'
 
-INPUT_REPEAT_DELAY = 1.0 / (LIMIT_FPS / 2.0)
+INPUT_REPEAT_DELAY = 1.0 / 10.0
 
 # starting stat levels
 START_POWER = 7
@@ -144,8 +144,8 @@ MIN_SPEED_DSP = 0.334 # inverted for display
 MIN_VISION = 1
 
 # best stat levels
-MIN_SPEED = START_SPEED // 2
-MIN_ATK_SPEED = START_ATK_SPEED // 2
+MIN_SPEED = 4
+MIN_ATK_SPEED = 2
 
 # Display bars
 # MIN
@@ -174,7 +174,7 @@ PART_FOV = 'Eye'
 PART_HEALING = 'Heart'
 
 # indicates 1 tile away
-MIN_PDIST = math.sqrt(2) + 0.0001
+MIN_PDIST = math.sqrt(2) + 0.005
 
 # start date/time in seconds
 START_TIME = 26172000 #Oct 30, 1970 AD, 9:00 PM (convert years)   26168400

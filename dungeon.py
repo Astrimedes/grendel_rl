@@ -147,9 +147,9 @@ class GameObject:
         if self.item:  #let the Item component know who owns it
             self.item.owner = self
             
-        # add self to scheduler
+        # add self to scheduler (randomized slightly to break up turn order)
         if self.uses_turns():
-            dungeon.schedule_turn(self.base_speed(), self)
+            dungeon.schedule_turn(self.base_speed()+randint(0,3), self)
             
     def base_speed(self):
         if self.fighter:
@@ -175,7 +175,7 @@ Healing item
 class Heart(GameObject):
     #chr(173) - the 'drumstick'
     def __init__(self, x=0, y=0):
-        itm = Item(cast_heal, inv_description='(heals damage)')
+        itm = Item(cast_heal, inv_description='(+20 HP)')
         GameObject.__init__(self, _dungeon, x, y, chr(3), constants.PART_HEALING,
             colors.flame, item=itm)
         #self, dungeon, x, y, char, name, color, blocks=False, 
@@ -186,7 +186,7 @@ Power bonus item
 """
 class Muscle(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_power, inv_description='(+Strength,-Speed)')
+        itm = Item(bonus_power, inv_description='(+Strength,-Speed,+2 HP)')
         GameObject.__init__(self, _dungeon, x, y, '&', constants.PART_POWER,
             colors.light_flame, item=itm)
 
@@ -195,13 +195,13 @@ Speed bonus item
 """
 class Legs(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_speed, inv_description='(+Speed,-Strength)')
+        itm = Item(bonus_speed, inv_description='(+Speed,-Strength,+2 HP)')
         GameObject.__init__(self, _dungeon, x, y, chr(28), constants.PART_SPEED,
             colors.light_flame, item=itm)
             
 class Eyes(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_vision, inv_description='(+Vision,-Toughness)')
+        itm = Item(bonus_vision, inv_description='(+Vision,-Toughness,+8 HP)')
         GameObject.__init__(self, _dungeon, x, y, chr(248), constants.PART_FOV,
             colors.light_flame, item=itm)
             
@@ -210,7 +210,7 @@ Defense bonus item
 """
 class Torso(GameObject):
     def __init__(self, x=0, y=0):
-        itm = Item(bonus_defense, inv_description='(+Toughness,-Vision)')
+        itm = Item(bonus_defense, inv_description='(+Toughness,-Vision,+2 HP)')
         GameObject.__init__(self, _dungeon, x, y, '#', constants.PART_DEFENSE,
             colors.light_flame, item=itm)
        
@@ -450,7 +450,6 @@ class Scout(GameObject):
         # now re-count enemies (since we've set our Fighter to None)
         _dungeon.count_enemies()
         
-        
 """
 Strong enemy (GameObject)
 """
@@ -461,7 +460,7 @@ class Warrior(Scout):
             # vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
         bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3)
         
-        bt_fighter = Fighter(hp=14, defense=3, power=6,
+        bt_fighter = Fighter(hp=16, defense=2, power=6,
             speed=14, death_function=self.death)
         
         weapon = Weapon(min_dmg=3, max_dmg=6, speed=8, 
@@ -553,7 +552,7 @@ class Beowulf(Scout):
     def __init__(self, dungeon, x, y):
         bt_ai = Beowulf_NPC(dungeon)
         
-        bt_fighter = Fighter(hp=60, defense=5, power=16,
+        bt_fighter = Fighter(hp=60, defense=4, power=15,
             speed=7, death_function=self.death)
         
         weapon = Weapon(min_dmg=4, max_dmg=10, speed=7,
@@ -689,10 +688,15 @@ class Dungeon:
         self.player_turn = False
         
         self.killed_boss = False
+        
+        self.gen_items = [Legs,Eyes,Muscle,Torso,Heart]
 
     def schedule_turn(self, interval, obj):
         self.schedule.setdefault(self.ticks + interval, []).append(obj)
-
+            
+    """
+    Advance time 1 tick until a schedule entry exists, then those objects take their turns
+    """
     def next_turn(self):
         acted = False
         while not(acted):
@@ -737,7 +741,7 @@ class Dungeon:
         
     def create_Beowulf(self):
     
-        room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.BIGROOM][0]
+        room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.BOSS][0]
         pt = (1, 0)
         tries = 0
         added = False
@@ -791,7 +795,9 @@ class Dungeon:
                 max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=1,
                 random_spurs=1)
         
-        self.generator.gen_level()
+        valid = False
+        while not valid:
+            valid = self.generator.gen_level()
         
         # populate tiles
         for row_num, row in enumerate(self.generator.level):
@@ -801,15 +807,8 @@ class Dungeon:
                     t.blocked = False
                     t.block_sight = False
                     
-        # find furthest left,bottom room for player
-        minx = constants.MAP_WIDTH
-        miny = 0
-        p_room = None
-        for r in self.generator.room_list:
-            if r.x <= minx and r.y >= miny:
-                minx = r.x
-                miny = r.y
-                p_room = r
+        # find room marked player room
+        p_room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.PLAYER][0]
         # only add player to this room
         pt = (1, 0)
         tries = 0
@@ -857,16 +856,12 @@ class Dungeon:
         monsters = [obj for obj in self.objects if obj.fighter and obj != self.player]
         max_items = num_items
         # give it an item to drop on death if there are items left
-        HEAL_MOD = 4 # every 4th item or so guaranteed to be heart
+        #HEAL_MOD = 4 # every 4th item or so guaranteed to be heart
         monster = choice(monsters)
         while num_items > 0:
             monster = choice(monsters)
             add_items = True
-            # guaranteed healing...
-            if (max_items - num_items) % HEAL_MOD == 0:
-                itm = Heart(-1,-1)
-            else:
-                itm = None
+            itm = None
             while add_items:
                 if not(itm):
                     # choose random item
@@ -890,22 +885,14 @@ class Dungeon:
             
 
     def choose_item(self):
-        itmtype = randint(0,3)
-        if itmtype == 0:
-            itm = Legs(-1, -1)
-        elif itmtype == 1:
-            itm = Eyes(-1, -1)
-        elif itmtype == 2:
-            itm = Muscle(-1, -1)
-        elif itmtype == 3:
-            itm = Torso(-1, -1)
-        # else:
-            # itm = Heart(-1, -1)
-            
-        return itm
+        return self.gen_items[randint(0,4)](-1,-1)
                 
                 
-    def place_objects_gen(self, room, num_monsters):        
+    def place_objects_gen(self, room, num_monsters):   
+        # don't place monster in room with player
+        if room.rtype == dun_gen.rtypes.PLAYER:
+            return
+    
         # room = (x, y, w, h)
         tries = 0
         mon_left = num_monsters
@@ -913,8 +900,6 @@ class Dungeon:
             added = False
             while not(added) and tries < 100:
                 tries += 1
-                
-                
             
                 #choose random spot for this monster
                 x = randint(room.x - room.w + 1, room.x + room.w - 1)
@@ -1141,7 +1126,7 @@ class Dungeon:
             
     def calc_date_time(self):
         # time of day (dungeon turn)
-        seconds = float(self.start_time + (self.ticks/4))
+        seconds = float(self.start_time + (self.ticks))
         stime = time.gmtime(seconds)
         # day, month, year (year is offset from 1970 in order to use normal date-time structs)
         self.date_string = time.strftime("%d %b", stime) + ', ' + str(int(stime[0] - constants.TIME_SUBTRACT_YEARS)) + ' AD'
@@ -1503,8 +1488,8 @@ class NPC:
         dist = max(_dungeon.distance(self.owner.x, self.owner.y, noise_x, noise_y),0.01)
         if dist < constants.MAX_HEAR_DIST:
             if dist > 1:
-                noise_pwr = (noise_strength / (dist))
-                dc = 1 - ((constants.MAX_NOISE_STR - noise_pwr) / constants.MAX_NOISE_STR)
+                noise_pwr = (noise_strength / (dist*2))
+                dc = noise_pwr / constants.MAX_NOISE_STR
             else:
                 dc = 1 #automatically hear it
             logging.info('noise dc: %s', dc)
@@ -1723,6 +1708,8 @@ class BardNPC(NPC):
                 
                 self.view = None
                 
+                viewed = False
+                
                 # determine if it falls asleep while player far away
                 if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
                     if self.state_turns > 30 and randfloat(0,1) <= self.laziness:
@@ -1735,7 +1722,8 @@ class BardNPC(NPC):
                     # fov (store visible tiles)
                     self.view = tdl.map.quickFOV(monster.x, monster.y, is_visible_tile, radius = self.fov_radius)
                     # if player could be seen...
-                    if self.player_in_view():
+                    viewed = self.player_in_view()
+                    if viewed:
                         # strong chance to wake from sleep
                         if self.state == states.SLEEP:
                             p_noise = ((constants.START_VISION / _dungeon.player.fov) * 0.7) + self.hearing
@@ -1759,7 +1747,7 @@ class BardNPC(NPC):
                         self.change_state(states.WANDER)
                             
                 # record player position if visible
-                if not(self.state == states.SLEEP) and self.player_in_view():
+                if not(self.state == states.SLEEP) and viewed:
                     self.last_px = _dungeon.player.x
                     self.last_py = _dungeon.player.y
                         
@@ -1864,7 +1852,7 @@ class Beowulf_NPC(NPC):
             try_special = 0.34
             if phealth < 0.5 and self.special and randfloat(0,1) < try_special:
                 # chance to fail based on player health!
-                grab = randfloat(0,1.05) > phealth
+                grab = randfloat(0,1.05) > phealth + (_dungeon.player.fov)
                 if grab:
                     self.special = False
                     # make arm weapon based on player stats!
@@ -1888,7 +1876,7 @@ class Beowulf_NPC(NPC):
                 #close enough, attack!
                 if not(self.special): # special used - must be using grendel's arm
                     dmg = self.owner.fighter.weapon.roll_dmg(self.owner.fighter, _dungeon.player.fighter)
-                    _dungeon.game.message('! Beowulf bashes you with your own arm for ' + str(dmg) + ' !!!', colors.light_red)
+                    _dungeon.game.message('! Beowulf bashes you with your own arm for ' + str(dmg) + ' !', colors.light_red)
                     _dungeon.player.fighter.take_dmg_silent(dmg)
                 else:
                     self.owner.fighter.attack(_dungeon.player) # normal attack text
@@ -1919,6 +1907,8 @@ def is_visible_tile(x, y):
 COLOR_BONUS = colors.dark_green
 COLOR_PENALTY = colors.dark_flame
 
+BONUS_HEAL = 2
+
 """
 Bonus to Power method
 """
@@ -1928,6 +1918,9 @@ def bonus_power():
 
     _dungeon.player.fighter.power += constants.POWER_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_POWER + ' makes you feel stronger!', COLOR_BONUS)
+    
+    # heal a bit
+    _dungeon.player.fighter.heal(BONUS_HEAL)
     
     #try_penalty(penalty_vision, penalty_speed, penalty_defense)
     return True
@@ -1948,6 +1941,9 @@ def bonus_defense():
 
     _dungeon.player.fighter.defense += constants.DEFENSE_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_DEFENSE + ' makes you feel tougher!', COLOR_BONUS)
+    
+    # heal a bit
+    _dungeon.player.fighter.heal(BONUS_HEAL)
    
     #try_penalty(penalty_vision, penalty_power, penalty_speed)
     return True    
@@ -1974,6 +1970,9 @@ def bonus_speed():
     _dungeon.player.fighter.weapon.speed = int(max(constants.MIN_ATK_SPEED, _dungeon.player.fighter.weapon.speed + constants.SPEED_BONUS))
         
     _dungeon.game.message("Consuming your enemy's " + constants.PART_SPEED + ' makes you feel faster!', COLOR_BONUS)
+    
+    # heal a bit
+    _dungeon.player.fighter.heal(BONUS_HEAL)
    
     #try_penalty(penalty_vision, penalty_power, penalty_defense)
     return True
@@ -1999,6 +1998,9 @@ def bonus_vision():
     _dungeon.game.fov_recompute = True
     _dungeon.player.fov += constants.VISION_BONUS
     _dungeon.game.message("Consuming your enemy's " + constants.PART_FOV + ' improves your vision!', COLOR_BONUS)
+    
+    # heal more than other items
+    _dungeon.player.fighter.heal(BONUS_HEAL*4)
     
     #try_penalty(penalty_speed, penalty_power, penalty_defense)
     return True
@@ -2112,5 +2114,4 @@ def rotate_pt(point, turn_clockwise=True):
     elif idx < 0:
         idx = len(list)-1
     return list[idx]
-    
     

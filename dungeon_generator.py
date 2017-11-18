@@ -18,12 +18,22 @@ from enumerations import Enum
 
 import constants
 
+import tcod
+
+import colors
+# tuples of color configs:
+# (light_ground, light_wall, dark_ground, dark_wall)
+COLORS_NORMAL = (colors.light_sepia,  colors.sepia, colors.darkest_azure, colors.darkest_gray)
+COLORS_BOSS = (colors.flame,  colors.dark_flame, colors.darkest_sepia, colors.darkest_orange)
+
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 # tile types
 tiles = Enum([('STONE',' '), ('FLOOR','.'), ('WALL','#')])
 
 # types of 'special rooms'
-rtypes = Enum(['BIGROOM','NORMAL','CAMP','BEOWULF','THRONE'])
-
+rtypes = Enum(['PLAYER','BOSS','NORMAL'])
                    
 class Room:
     def __init__(self, x, y, width, height, rtype=rtypes.NORMAL):
@@ -69,7 +79,7 @@ class Generator():
         # return [x, y, w, h]
         return self.gen_room_in_region(region_x=0, region_y=0, region_w=self.width, region_h=self.height)
         
-    def gen_room_in_region(self, region_x, region_y, region_w, region_h):
+    def gen_room_in_region(self, region_x, region_y, region_w, region_h, rtype=rtypes.NORMAL, color=COLORS_NORMAL):
         x, y, w, h = 0, 0, 0, 0
  
         w = random.randint(self.min_room_xy, self.max_room_xy)
@@ -82,9 +92,9 @@ class Generator():
         y = random.randint(miny, (region_y + region_h - h - 2))
  
         #create a room
-        return Room(x, y, w, h)
+        return Room(x, y, w, h, rtype)
         
-    def gen_large_room_in_region(self, region_x, region_y, region_w, region_h):
+    def gen_large_room_in_region(self, region_x, region_y, region_w, region_h, rtype=rtypes.BOSS, color=COLORS_BOSS):
         x, y, w, h = 0, 0, 0, 0
  
         newmin = min(constants.BIGROOM_MIN_W, max(region_w-6, 1))
@@ -101,7 +111,7 @@ class Generator():
         x = random.randint(minx, max((minx + region_w - w - 2),minx+1))
         y = random.randint(miny, max((miny + region_h - h - 2),miny+1))
         
-        rm = Room(x, y, w, h, rtype = rtypes.BIGROOM)
+        rm = Room(x, y, w, h, rtype)
  
         #create a room
         return rm
@@ -129,11 +139,10 @@ class Generator():
                 current_room.y < (y + h)):
  
                 return True
- 
         return False
  
  
-    def corridor_between_points(self, x1, y1, x2, y2, join_type='either'):
+    def corridor_between_points(self, x1, y1, x2, y2, join_type='either', color=COLORS_NORMAL):
         if x1 == x2 and y1 == y2 or x1 == x2 or y1 == y2:
             return [(x1, y1), (x2, y2)]
         else:
@@ -161,7 +170,8 @@ class Generator():
             elif join is 'bottom':
                 return [(x1, y1), (x2, y1), (x2, y2)]
  
-    def join_rooms(self, room_1, room_2, join_type='either'):
+ 
+    def join_rooms(self, room_1, room_2, join_type='either', color=COLORS_NORMAL):
         # sort by the value of x
         sorted_room = [room_1, room_2]
         sorted_room.sort(key=lambda r: r.x)
@@ -257,25 +267,36 @@ class Generator():
         # build an empty dungeon, blank the room and corridor lists
         for i in range(self.height):
             self.level.append([tiles.STONE] * self.width)
+        #self.level = [[tiles.STONE for y in range(self.height)] for x in range(self.width)]
             
         self.room_list = []
         self.corridor_list = []
         
         # divide the dungeon up into 4 'regions' to generate rooms inside of
         regions = []
-        pw = (self.width // 2)
-        ph = (self.height // 2)
-        regions.append((0, 0, pw-1, ph-1))
-        regions.append((0, ph+1, pw-1, ph-2))
-        regions.append((pw+1, ph+1, pw-2, ph-2))
-        regions.append((pw+1, 0, pw-2, ph-1))
-        
-        
-        # 'large room' chance
-        lrg_rm = 0.08
+        pw = (self.width // 2)-1
+        ph = (self.height // 2)-1
+        r1 = (0, 0, pw, ph)
+        r2 = (pw, 0, pw, ph)
+        r3 = (pw, ph, pw, ph)
+        r4 = (0, ph, pw, ph)
+        # determine which orientation randomly...
+        reversed = random.randint(0,1) == 0
+        if reversed:
+            regions.append(r4)
+            regions.append(r3)
+            regions.append(r2)
+            regions.append(r1)
+            proom_idx = 3
+        else:
+            regions.append(r1)
+            regions.append(r2)
+            regions.append(r3)
+            regions.append(r4)
+            proom_idx = 0
  
         # FIRST REGIONS
-        rindex = 0
+        rindex = -1
         # start generating rooms in the first 'normal' regions
         max_region_rooms = self.max_rooms // 3
         max_iters = max_region_rooms * 4
@@ -304,7 +325,7 @@ class Generator():
                         if rr >= max_region_rooms:
                             break
                     # connect the rooms in this region
-                    for a in range(rindex, len(self.room_list) - 1):
+                    for a in range(rindex+1, len(self.room_list)-1):
                         self.join_rooms(self.room_list[a], self.room_list[a + 1])
                     # connect to previous region
                     if i > 0:
@@ -314,25 +335,15 @@ class Generator():
                     # last room in this region, for next iteration
                     rindex = len(self.room_list)-1
  
-        # do the random joins
-        # for a in range(self.random_connections):
-            # room_1 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            # room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            # self.join_rooms(room_1, room_2)
-        
-        # # do the spurs
-        # for a in range(self.random_spurs):
-            # room_1 = Room(random.randint(2, self.width - 2), random.randint(2, self.height - 2), 1, 1)
-            # room_2 = self.room_list[random.randint(0, len(self.room_list) - 1)]
-            # self.join_rooms(room_1, room_2)
-            # del room_1
+        # mark first room as 'player start'
+        self.room_list[proom_idx].rtype = rtypes.PLAYER
         
         # LAST REGION
         # now fill in last region with several small rooms
         #rindex = len(self.room_list)-1 # index of room previous to this region
         r = regions[last]
         sr = 0
-        sr_target = 3
+        sr_target = 5
         for a in range(max_iters):
             fits = False
             # generate the small rooms
@@ -347,7 +358,7 @@ class Generator():
                 break
         # and now several large rooms
         lr = 0
-        lr_target = 2
+        lr_target = 3
         for a in range(max_iters):
             fits = False
             # generate the large rooms
@@ -365,12 +376,10 @@ class Generator():
             for i in range(rindex+1, max_index):
                 self.join_rooms(self.room_list[i], self.room_list[i+1])
         
-        # make one connection to previous rooms
-        min_rm = max(0, rindex - 2)
-        r1 = self.room_list[random.randint(0, rindex)]
+        # make one connection to a previous room
+        r1 = self.room_list[rindex]
         r2 = self.room_list[random.randint(rindex+1, len(self.room_list)-1)]
         self.join_rooms(r1, r2)
-            
  
         # fill the map
         # paint rooms x,y,w,h
@@ -423,7 +432,53 @@ class Generator():
  
                     if self.level[row + 1][col + 1] == tiles.STONE:
                         self.level[row + 1][col + 1] = tiles.WALL
+                        
+        return self.test_level()
+    
+    
+    """
+    Pathfinding check - return True if valid map and False if not
+    """
+    def test_level(self):
+        # now pathfind to sanity check!
+        p_room = [room for room in self.room_list if room.rtype == rtypes.PLAYER][0]
+        b_room = [room for room in self.room_list if room.rtype == rtypes.BOSS][0]
+        
+        #Create a FOV map that has the dimensions of the map
+        fov = tcod.map_new(self.width, self.height)
  
+        #Scan the current map each turn and set all the walls as unwalkable
+        for y1 in range(self.height):
+            for x1 in range(self.width):
+                open = not (self.level[y1][x1] == tiles.STONE or self.level[y1][x1] == tiles.WALL)
+                tcod.map_set_properties(fov, x1, y1, open, open)
+                
+        #Allocate a A* path
+        my_path = tcod.path_new_using_map(fov, 1.0)
+        
+        #Compute the path between self's coordinates and the target's coordinates
+        tcod.path_compute(my_path, p_room.x, p_room.y, b_room.x, b_room.y)
+ 
+        #Walk the path
+        success = False
+        if my_path and not tcod.path_is_empty(my_path):
+            success = True
+            while not tcod.path_is_empty(my_path):
+                x, y = tcod.path_walk(my_path,True)
+                if x is None :
+                    success = False
+                    break
+        
+        #Delete the path to free memory
+        tcod.path_delete(my_path)
+        
+        # return
+        return success
+        
+ 
+    """
+    Print tile chars of map
+    """
     def gen_tiles_level(self):
  
         for row_num, row in enumerate(self.level):
@@ -443,3 +498,22 @@ class Generator():
         print('\nCorridor List: ', self.corridor_list)
  
         [print(row) for row in self.tiles_level]
+
+    
+def try_break_map():
+    success = 0
+    fail = 0
+    gen = Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
+                max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
+                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=1,
+                random_spurs=1)
+    while True:
+        check = gen.gen_level()
+        if check:
+            success += 1
+        else:
+            fail += 1
+        logging.info('Fail: %s, Success: %s', fail, success)
+        
+if __name__ == '__main__':
+    try_break_map()
