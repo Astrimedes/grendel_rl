@@ -9,7 +9,7 @@ SCREEN_HEIGHT = 52
 TILE_SIZE = 16
 
 #size of the map
-MAP_WIDTH = 80
+MAP_WIDTH = 100
 MAP_HEIGHT = 60
 
 # sizes and coordinates relevant for the GUI
@@ -36,9 +36,9 @@ CAMERA_HEIGHT = SCREEN_HEIGHT - MSG_PANEL_HEIGHT - 1
 INVENTORY_WIDTH = 50
 
 #parameters for dungeon generator
-ROOM_MAX_SIZE = 5
+ROOM_MAX_SIZE = 8
 ROOM_MIN_SIZE = 2
-MAX_ROOMS = 32
+MAX_ROOMS = 65
 
 BIGROOM_MIN_W = 6
 BIGROOM_MAX_W = 12
@@ -46,7 +46,7 @@ BIGROOM_MIN_H = 6
 BIGROOM_MAX_H = 12
 
 # monster qty
-MONSTER_COUNT = 34  #26
+MONSTER_COUNT = 46  #26
 MONSTER_SPECIAL = 0.4
 MONSTER_BARD = 0.45
 MONSTER_TOUGH = 0.55
@@ -145,7 +145,7 @@ MIN_VISION = 1
 
 # best stat levels
 MIN_SPEED = 4
-MIN_ATK_SPEED = 2
+MIN_ATK_SPEED = 3
 
 # Display bars
 # MIN

@@ -819,7 +819,7 @@ class Game:
                 # dmg
                 else:
                     # indicate dmg amount
-                    c = colors.red
+                    c = colors.flame
                     # guarantee diff
                     if bar_width == curr_bar_width:
                         bar_width += 1
@@ -908,15 +908,18 @@ class Game:
                     #if it's not visible right now, the player can only see it 
                     #if it's explored
                     if self.dungeon.map[map_x][map_y].explored:
-                        if wall:
-                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
-                        else:
-                            self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_ground)
+                        self.map_console.draw_char(x, y, None, fg=None, bg=self.dungeon.map[map_x][map_y].color_dark)
+                        # if wall:
+                            # self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_wall)
+                        # else:
+                            # self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_dark_ground)
                 else:
-                    if wall:
-                        self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_wall)
-                    else:
-                        self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
+                    # if wall:
+                        # self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_wall)
+                    # else:
+                        # self.map_console.draw_char(x, y, None, fg=None, bg=constants.color_light_ground)
+                    self.map_console.draw_char(x, y, None, fg=None, bg=self.dungeon.map[map_x][map_y].color_light)
+                    
                     #since it's visible, explore it
                     self.dungeon.map[map_x][map_y].explored = True
      

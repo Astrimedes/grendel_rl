@@ -13,7 +13,9 @@ from random import choice
 from random import random
 from random import uniform as randfloat
 
-import dungeon_generator as dun_gen
+from dungeon_generator import AreaTypes
+from dungeon_generator import TileTypes
+from dungeon_generator import Generator
 
 import numpy as np
 
@@ -29,17 +31,19 @@ from strutil import strright_back
 from strutil import format_list
 import strutil
 
-# turn counter
-from ticker import Ticker
-
 # GLOBALS #
 # logging
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ai states
-from enumerations import Enum
-states = Enum(['SLEEP', 'WANDER', 'FIGHT', 'FLEE'])
+# ai States
+from enum import Enum
+
+class States(Enum):
+    SLEEP = 1
+    WANDER = 2
+    FIGHT = 3
+    FLEE = 4
 
 # global dungeon instance
 _dungeon = None
@@ -49,7 +53,7 @@ Map tile without a GameObject
 """
 class Tile:
     #a tile of the map and its properties
-    def __init__(self, blocked, block_sight=None):
+    def __init__(self, blocked, block_sight=None, color_light=None, color_dark=None):
         self.blocked = blocked
  
         #all tiles start unexplored
@@ -59,6 +63,9 @@ class Tile:
         if block_sight is None: 
             block_sight = blocked
         self.block_sight = block_sight
+        
+        self.color_light = color_light
+        self.color_dark = color_dark
 
 """
 A consumable Item that can be picked up and used by the player
@@ -290,7 +297,7 @@ class Fighter:
         
         if self.owner.ai:
             # wake up automatically (into Wander to prevent ability to atk immediately)
-            self.owner.ai.change_state(states.WANDER)
+            self.owner.ai.change_state(States.WANDER)
         
         #check for death. if there's a death function, call it
         if self.hp <= 0:
@@ -399,7 +406,7 @@ class Scout(GameObject):
         #barb_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             #vision_range=constants.FOV_RADIUS_BAD)
         
-        barb_ai = NPC()
+        barb_ai = NPC(hearing=0.3)
             
         barb_fighter = Fighter(hp=8, defense=1, power=3, 
             speed=8, death_function=self.death)
@@ -458,7 +465,7 @@ class Warrior(Scout):
     def __init__(self, dungeon, x, y):
         # bt_ai = BasicMonster(dungeon, fov_algo=constants.FOV_ALGO_BAD, 
             # vision_range=constants.FOV_RADIUS_BAD, flee_health = 0.1, flee_chance = 0.4)
-        bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3)
+        bt_ai = NPC(flee_health = 0.1, flee_chance = 0.3, hearing = 0.04)
         
         bt_fighter = Fighter(hp=16, defense=2, power=6,
             speed=14, death_function=self.death)
@@ -552,10 +559,10 @@ class Beowulf(Scout):
     def __init__(self, dungeon, x, y):
         bt_ai = Beowulf_NPC(dungeon)
         
-        bt_fighter = Fighter(hp=60, defense=4, power=15,
+        bt_fighter = Fighter(hp=60, defense=4, power=16,
             speed=7, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=10, speed=7,
+        weapon = Weapon(min_dmg=4, max_dmg=10, speed=5,
         attack_names=['strong limbs'], 
         attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)
@@ -741,7 +748,7 @@ class Dungeon:
         
     def create_Beowulf(self):
     
-        room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.BOSS][0]
+        room = [room for room in self.generator.room_list if room.rtype is AreaTypes.BOSS][0]
         pt = (1, 0)
         tries = 0
         added = False
@@ -778,22 +785,20 @@ class Dungeon:
         if self.generator:
             del self.generator
      
-        #fill map with "blocked" tiles
+        #fill map with "blocked" wall tiles
         self.map = [[Tile(True)
             for y in range(constants.MAP_HEIGHT)]
                 for x in range(constants.MAP_WIDTH)]
-     
+                
         rooms = []
         num_rooms = 0
         
         monsters_left = constants.MONSTER_COUNT
-        items_left = monsters_left // 2
         
         # generate layout
-        self.generator = dun_gen.Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
+        self.generator = Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
-                max_room_xy=constants.ROOM_MAX_SIZE, rooms_overlap=False, random_connections=1,
-                random_spurs=1)
+                max_room_xy=constants.ROOM_MAX_SIZE)
         
         valid = False
         while not valid:
@@ -802,13 +807,14 @@ class Dungeon:
         # populate tiles
         for row_num, row in enumerate(self.generator.level):
             for col_num, col in enumerate(row):
-                if col == dun_gen.tiles.FLOOR:
                     t = self.map[col_num][row_num]
-                    t.blocked = False
-                    t.block_sight = False
+                    t.blocked = col.blocked
+                    t.block_sight = t.blocked
+                    t.color_light = col.color_light
+                    t.color_dark = col.color_dark
                     
         # find room marked player room
-        p_room = [room for room in self.generator.room_list if room.rtype == dun_gen.rtypes.PLAYER][0]
+        p_room = [room for room in self.generator.room_list if room.rtype is AreaTypes.PLAYER][0]
         # only add player to this room
         pt = (1, 0)
         tries = 0
@@ -890,7 +896,7 @@ class Dungeon:
                 
     def place_objects_gen(self, room, num_monsters):   
         # don't place monster in room with player
-        if room.rtype == dun_gen.rtypes.PLAYER:
+        if room.rtype == AreaTypes.PLAYER:
             return
     
         # room = (x, y, w, h)
@@ -1191,8 +1197,8 @@ class NPC:
         self.flee_chance = flee_chance
     
         # begin sleeping
-        self.state = states.SLEEP
-        self.last_state = states.SLEEP
+        self.state = States.SLEEP
+        self.last_state = States.SLEEP
         self.state_turns = 0 # how many turns current state has been active
         
         # distance to player at last calculation
@@ -1253,12 +1259,12 @@ class NPC:
         self.view = None
         
         # determine if it falls asleep while player far away
-        if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
+        if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == States.SLEEP):
             if self.state_turns > 20 and randfloat(0,1) <= self.laziness:
-                self.change_state(states.SLEEP)
+                self.change_state(States.SLEEP)
             else:
                 self.laziness *= 1.5 # less likely to fall asleep
-                self.change_state(states.WANDER)
+                self.change_state(States.WANDER)
         # if monster sees player... 
         elif self.pdistance < constants.MAX_HEAR_DIST:
             # fov (store visible tiles)
@@ -1266,24 +1272,24 @@ class NPC:
             # if player could be seen...
             if self.player_in_view():
                 # strong chance to wake from sleep
-                if self.state == states.SLEEP:
+                if self.state == States.SLEEP:
                     p_noise = ((constants.START_VISION / _dungeon.player.fov) * 0.7) + self.hearing
                     logging.info('pnoise: %s', p_noise)
                     if randfloat(0,0.99) < p_noise:
-                        self.change_state(states.FIGHT)
+                        self.change_state(States.FIGHT)
                 # fight or flee player in view...
                 else:
                     # flee
                     if (self.owner.fighter.hp / self.owner.fighter.max_hp < self.flee_health) and len(_dungeon.combatants) < 2 and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
-                        self.change_state(states.FLEE)
+                        self.change_state(States.FLEE)
                     # otherwise fight
                     else:
-                        self.change_state(states.FIGHT)
-            elif not(self.state == states.SLEEP):
-                self.change_state(states.WANDER)
+                        self.change_state(States.FIGHT)
+            elif not(self.state == States.SLEEP):
+                self.change_state(States.WANDER)
                     
         # record player position if visible
-        if not(self.state == states.SLEEP) and self.player_in_view():
+        if not(self.state == States.SLEEP) and self.player_in_view():
             self.last_px = _dungeon.player.x
             self.last_py = _dungeon.player.y
                     
@@ -1293,16 +1299,16 @@ class NPC:
         # set color by state
         self.owner.color = self.calc_color()
         
-        if self.state == states.SLEEP:
+        if self.state == States.SLEEP:
             return self.take_sleep()
             
-        if self.state == states.WANDER:
+        if self.state == States.WANDER:
             return self.take_movetarget()
             
-        if self.state == states.FIGHT:
+        if self.state == States.FIGHT:
             return self.take_fight()
             
-        if self.state == states.FLEE:
+        if self.state == States.FLEE:
             return self.take_flee()
             
     """
@@ -1310,13 +1316,13 @@ class NPC:
     """
     def calc_color(self):
         c = colors.black
-        if self.state == states.FIGHT:
+        if self.state == States.FIGHT:
             c = colors.dark_orange
-        if self.state == states.FLEE:
+        if self.state == States.FLEE:
             c = colors.light_orange
-        elif self.state == states.SLEEP:
+        elif self.state == States.SLEEP:
             c = colors.darkest_grey
-        elif self.state == states.WANDER:
+        elif self.state == States.WANDER:
             c = colors.dark_grey
             
         return c
@@ -1360,10 +1366,10 @@ class NPC:
         
         if newtarget:
             # set random wander dest
-            if self.state == states.WANDER:
+            if self.state == States.WANDER:
                 self.set_wander_target()
             # flee...
-            if self.state == states.FLEE:
+            if self.state == States.FLEE:
                 # run away from player
                 if not(self.set_flee_target()):
                     # find tougher ally if possible
@@ -1493,22 +1499,22 @@ class NPC:
             else:
                 dc = 1 #automatically hear it
             logging.info('noise dc: %s', dc)
-            if randfloat(0,1) - self.hearing < dc:
+            if randfloat(0,1 - self.hearing) < dc:
                 # set a new target
                 self.target_x = noise_x
                 self.target_y = noise_y
                 # treat as fight if waking from sleep
-                if self.state == states.SLEEP:
-                    self.change_state(states.FIGHT)
+                if self.state == States.SLEEP:
+                    self.change_state(States.FIGHT)
                     self.last_px = noise_x
                     self.last_py = noise_y
-                elif self.state == states.WANDER:
+                elif self.state == States.WANDER:
                     if _dungeon.distance(self.owner.x, self.owner.y, self.target_x, self.target_y) > dist:
                         # set new target to noise location
                         self.target_x = noise_x
                         self.target_y = noise_y
                 # flee from sound if fleeing
-                elif self.state == states.FLEE:
+                elif self.state == States.FLEE:
                     self.last_px = noise_x
                     self.last_py = noise_y
                 
@@ -1517,26 +1523,21 @@ class NPC:
         if self.state == new_state:
             return False
         
-        if new_state in states.all():
+        # msg for wake from sleep
+        if self.state == States.SLEEP and self.player_in_view():
+            _dungeon.game.message(self.owner.name + ' wakes up!', colors.orange)
+    
+        logging.info('AI change to %s from %s (%s)', new_state.name, self.state.name, self.owner.name)
         
-            # msg for wake from sleep
-            if self.state == states.SLEEP and self.player_in_view():
-                _dungeon.game.message(self.owner.name + ' wakes up!', colors.orange)
+        self.last_state = self.state
+        self.state = new_state
         
-            logging.info('AI change to %s from %s (%s)', states.nameof(new_state), states.nameof(self.state), self.owner.name)
-            
-            self.last_state = self.state
-            self.state = new_state
-            
-            self.state_turns = 0
-            self.target_x = None
-            self.target_y = None
-            
-            if self.state == states.WANDER:
-                self.set_wander_target()
-            
-        else:
-            raise ValueError('Invalid State attempted!', new_state)
+        self.state_turns = 0
+        self.target_x = None
+        self.target_y = None
+        
+        if self.state == States.WANDER:
+            self.set_wander_target()
             
         return True
         
@@ -1614,7 +1615,7 @@ class NPC:
         if self.pdistance > constants.MIN_PDIST:
             # check for state change to wander
             if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
-                self.change_state(states.WANDER)
+                self.change_state(States.WANDER)
                 return self.take_movetarget()
             
             # determine whether to wait for player to approach or approach yourself
@@ -1664,8 +1665,8 @@ class BardNPC(NPC):
             self.flee_chance = flee_chance
         
             # begin sleeping
-            self.state = states.SLEEP
-            self.last_state = states.SLEEP
+            self.state = States.SLEEP
+            self.last_state = States.SLEEP
             self.state_turns = 0 # how many turns current state has been active
             
             # distance to player at last calculation
@@ -1711,12 +1712,12 @@ class BardNPC(NPC):
                 viewed = False
                 
                 # determine if it falls asleep while player far away
-                if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == states.SLEEP):
+                if self.pdistance > constants.MAX_HEAR_DIST and not(self.state == States.SLEEP):
                     if self.state_turns > 30 and randfloat(0,1) <= self.laziness:
-                        self.change_state(states.SLEEP)
+                        self.change_state(States.SLEEP)
                     else:
                         self.laziness *= 1.5 # less likely to fall asleep
-                        self.change_state(states.WANDER)
+                        self.change_state(States.WANDER)
                 # if monster sees player... 
                 elif self.pdistance < constants.MAX_HEAR_DIST:
                     # fov (store visible tiles)
@@ -1725,11 +1726,11 @@ class BardNPC(NPC):
                     viewed = self.player_in_view()
                     if viewed:
                         # strong chance to wake from sleep
-                        if self.state == states.SLEEP:
+                        if self.state == States.SLEEP:
                             p_noise = ((constants.START_VISION / _dungeon.player.fov) * 0.7) + self.hearing
                             logging.info('pnoise: %s', p_noise)
                             if randfloat(0,0.99) < p_noise:
-                                self.change_state(states.FIGHT)
+                                self.change_state(States.FIGHT)
                         # fight or flee player in view...
                         else:
                             # flee - Bard flees based on distance from player!
@@ -1738,16 +1739,16 @@ class BardNPC(NPC):
                                 fleedist += constants.MIN_PDIST
                             if len(_dungeon.combatants) > 1:
                                 fleedist -= constants.MIN_PDIST
-                            if self.pdistance < fleedist and not(self.state == states.FLEE and self.state_turns < 2) and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
-                                self.change_state(states.FLEE)
+                            if self.pdistance < fleedist and not(self.state == States.FLEE and self.state_turns < 2) and (self.pdistance > constants.MIN_PDIST or randfloat(0,1) <= self.flee_chance):
+                                self.change_state(States.FLEE)
                             # otherwise fight
                             else:
-                                self.change_state(states.FIGHT)
-                    elif not(self.state == states.SLEEP):
-                        self.change_state(states.WANDER)
+                                self.change_state(States.FIGHT)
+                    elif not(self.state == States.SLEEP):
+                        self.change_state(States.WANDER)
                             
                 # record player position if visible
-                if not(self.state == states.SLEEP) and viewed:
+                if not(self.state == States.SLEEP) and viewed:
                     self.last_px = _dungeon.player.x
                     self.last_py = _dungeon.player.y
                         
@@ -1757,16 +1758,16 @@ class BardNPC(NPC):
             # set color by state
             self.owner.color = self.calc_color()
             
-            if self.state == states.SLEEP:
+            if self.state == States.SLEEP:
                 return self.take_sleep()
                 
-            if self.state == states.WANDER:
+            if self.state == States.WANDER:
                 return self.take_movetarget()
                 
-            if self.state == states.FIGHT:
+            if self.state == States.FIGHT:
                 return self.take_fight()
                 
-            if self.state == states.FLEE:
+            if self.state == States.FLEE:
                 return self.take_flee()
                 
         # Fight! (return turns used)
@@ -1782,7 +1783,7 @@ class BardNPC(NPC):
             if self.pdistance > constants.MIN_PDIST:
                 # check for state change to wander
                 if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
-                    self.change_state(states.WANDER)
+                    self.change_state(States.WANDER)
                     return self.take_movetarget()
             
                 # see if we need to move in range of music...
@@ -1818,7 +1819,7 @@ class Beowulf_NPC(NPC):
     def __init__(self, dungeon, fov_algo = constants.FOV_ALGO, vision_range = constants.START_VISION+1, 
         flee_health=0, flee_chance=0, curses=['Tonight you die by my hand, monster!']):
         
-        NPC.__init__(self, hearing = 0.7, laziness = 0.05, 
+        NPC.__init__(self, hearing = 0.45, laziness = 0.05, 
             vision_range = constants.START_VISION+1, flee_health=0.08, flee_chance=0.1)
             
         self.leader = True
@@ -1839,7 +1840,7 @@ class Beowulf_NPC(NPC):
         if self.pdistance > constants.MIN_PDIST:
             # check for state change to wander
             if self.pdistance > 10 and self.state_turns > 8 and _dungeon.ticks - self.last_attack_turn > (self.owner.fighter.move_speed() * 12):
-                self.change_state(states.WANDER)
+                self.change_state(States.WANDER)
                 return self.take_movetarget()
         
             #logging.info('%s wants to move towards player. distance = %s', self.owner.name, self.pdistance)
