@@ -173,7 +173,7 @@ class Generator():
         if atype != AreaTypes.NORMAL:
             obs = True
         else:
-            obs = random.randint(0,1) == 0
+            obs = random.randint(1,3) < 3
         return Room(x, y, w, h, atype, obs)
         
     def gen_large_room_in_region(self, region_x, region_y, region_w, region_h, atype=AreaTypes.BOSS):
@@ -557,7 +557,18 @@ class Generator():
             for o in room.obstacles:
                 for y in range(o.h):
                     for x in range(o.w):
-                        self.level[o.y+y][o.x+x] = o.tile_type
+                        oy = o.y+y
+                        ox = o.x+x
+                        clear = True
+                        # check for adjacent walls...
+                        for w in range(-1,2):
+                            for h in range(-1,2):
+                                # skip obstacles that are next to walls
+                                if self.level[oy+h][ox+w] == TileTypes.WALL or self.level[oy+h][ox+w] == TileTypes.BOSS_WALL:
+                                    clear = False
+                                    break
+                        if clear:
+                            self.level[oy][ox] = o.tile_type
         
         return self.test_level()
     
