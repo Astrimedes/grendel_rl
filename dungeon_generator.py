@@ -21,21 +21,18 @@ import constants
 import tcod
 
 import colors
-# tuples of color configs:
-# (light_ground, light_wall, dark_ground, dark_wall)
-# COLORS_NORMAL = (colors.light_sepia,  colors.sepia, colors.darkest_azure, colors.darkest_gray)
-# COLORS_BOSS = (colors.flame,  colors.dark_flame, colors.darkest_sepia, colors.darkest_orange)
 
 light_floor = (158,134,100) #light_sepia
 light_wall = (127,101,63) #sepia
 dark_floor = (0,31,63) #darkest_azure
 dark_wall = (31,31,31) #darkest_grey
 
+light_obstacle = (102,81,49)
+
 light_boss_floor = (98,100,32)
 dark_boss_floor = (26,21,45)
 light_boss_wall = (61,52,107)
 dark_boss_wall =  (31,0,61)
-
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -47,6 +44,7 @@ class TileTypes(Enum):
     BOSS_FLOOR = (False, ',', light_boss_floor, dark_boss_floor)
     WALL = (True, '#', light_wall, dark_wall)
     BOSS_WALL = (True, '+', light_boss_wall, dark_boss_wall)
+    OBSTACLE = (True, 'o', light_obstacle, dark_wall)
     
     def __init__(self, blocked, char, color_light, color_dark):
         self.blocked = blocked
@@ -61,12 +59,50 @@ class AreaTypes(Enum):
     BOSS = 2
     NORMAL = 3
                    
-class Room:
-    def __init__(self, x, y, width, height, atype=AreaTypes.NORMAL):
+class Obstacle:
+    def __init__(self, x, y, width, height, area_type):
         self.x = x
         self.y = y
         self.w = width
         self.h = height
+        
+        self.tile_type = TileTypes.OBSTACLE
+            
+    def __repr__(self):
+        return '<Obstacle x:{0} y:{1} w:{2} h:{3}>'.format(self.x, self.y, self.w, self.h)
+                   
+                   
+class Room:
+    def __init__(self, x, y, width, height, atype=AreaTypes.NORMAL, obstacles=False):
+        self.x = x
+        self.y = y
+        self.w = width
+        self.h = height
+        
+        # list obstructed Obstacles in rooms
+        self.obstacles = []
+        if obstacles and (width > 2 and height > 2):
+            # onebig = min(width,height) > 3 and random.randint(0,10) < 4
+            # if onebig:
+                # w = random.randint(2,max(3,width//4))
+                # h = random.randint(2,max(3,height//4))
+                # x, y = self.center()
+                # x -= (w//2)
+                # y -= (h//2)
+                # # new obstacle
+                # self.obstacles.append(Obstacle(x,y,w,h,atype))
+            # else:
+            
+            # add a random number of single block obstacles
+            amount = max(1, (self.w * self.h) // 6)
+            pw = (self.w // 2) - 1
+            ph = (self.h // 2) - 1
+            for i in range(amount):
+                x, y = self.center()
+                x += random.randint(-pw, pw)
+                y += random.randint(-ph, ph)
+                # new obstacle
+                self.obstacles.append(Obstacle(x,y,1,1,atype))
         
         # room type
         self.rtype = atype
@@ -134,7 +170,11 @@ class Generator():
         y = random.randint(miny, (region_y + region_h - h - 4))
  
         #create a room
-        return Room(x, y, w, h, atype)
+        if atype != AreaTypes.NORMAL:
+            obs = True
+        else:
+            obs = random.randint(0,1) == 0
+        return Room(x, y, w, h, atype, obs)
         
     def gen_large_room_in_region(self, region_x, region_y, region_w, region_h, atype=AreaTypes.BOSS):
         x, y, w, h = 0, 0, 0, 0
@@ -154,7 +194,7 @@ class Generator():
         y = random.randint(miny, max((miny + region_h - h - 4),miny+1))
  
         #create a room
-        return Room(x, y, w, h, atype)
+        return Room(x, y, w, h, atype, True)
  
     def room_overlapping(self, room, room_list):
         x = room.x
@@ -163,7 +203,7 @@ class Generator():
         h = room.h
         
         # out of bounds
-        if x + w + 1 > self.width or y + h + 1 > self.height or x - 1 < 0 or y - 1 < 0:
+        if x + w  > self.width or y + h > self.height or x < 0 or y < 0:
             return True
  
         for current_room in room_list:
@@ -173,10 +213,10 @@ class Generator():
             # is greater than the other's maximum in
             # that dimension.
  
-            if (x-1 < (current_room.x + current_room.w) and
-                current_room.x-1 < (x + w) and
-                y-1 < (current_room.y + current_room.h) and
-                current_room.y-1 < (y + h)):
+            if (x < (current_room.x + current_room.w) and
+                current_room.x < (x + w) and
+                y < (current_room.y + current_room.h) and
+                current_room.y < (y + h)):
  
                 return True
         return False
@@ -511,6 +551,13 @@ class Generator():
  
                     if self.level[row + 1][col + 1] is TileTypes.STONE:
                         self.level[row + 1][col + 1] = TileTypes.WALL
+                        
+        # paint 'obstacles' in rooms
+        for room in self.room_list:
+            for o in room.obstacles:
+                for y in range(o.h):
+                    for x in range(o.w):
+                        self.level[o.y+y][o.x+x] = o.tile_type
         
         return self.test_level()
     
@@ -624,14 +671,16 @@ class Generator():
             len(self.room_list), len(self.corridor_list), len(self.level[0]), len(self.level), self.regions)
 
     
-def try_break_map():
+def try_break_map(count):
     success = 0
     fail = 0
     gen = Generator(width=constants.MAP_WIDTH, height=constants.MAP_HEIGHT,
                 max_rooms=constants.MAX_ROOMS, min_room_xy=constants.ROOM_MIN_SIZE,
                 max_room_xy=constants.ROOM_MAX_SIZE)
                 
-    while True:
+    for i in range(count):
+        print('---------------------------------------------------')
+        print('')
         check = gen.gen_level()
         if check:
             success += 1
@@ -641,6 +690,7 @@ def try_break_map():
             print('Failed!')
             
         print('Fail: ' + str(fail) + ', Success: ' + str(success))
+        print('')
         
 if __name__ == '__main__':
     import sys

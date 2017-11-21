@@ -560,9 +560,9 @@ class Beowulf(Scout):
         bt_ai = Beowulf_NPC(dungeon)
         
         bt_fighter = Fighter(hp=60, defense=4, power=16,
-            speed=7, death_function=self.death)
+            speed=8, death_function=self.death)
         
-        weapon = Weapon(min_dmg=4, max_dmg=10, speed=5,
+        weapon = Weapon(min_dmg=3, max_dmg=9, speed=6,
         attack_names=['strong limbs'], 
         attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)
