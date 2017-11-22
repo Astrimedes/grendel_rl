@@ -229,7 +229,7 @@ A creature's combat representation: hp, power, attack, take_dmg etc
 """
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None, health_colors=None):
+    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -257,21 +257,6 @@ class Fighter:
     def pass_time(self):
         if self.lhc_turns > 0:
             self.lhc_turns -= 1
-            
-    def set_health_color(self, thresh_colors):
-        # set color according to health
-        if not self.died:
-            self.owner.color = self.get_health_color(thresh_colors)
-                    
-    def get_health_color(self, thresh_colors):
-        fraction = (self.hp / self.max_hp)
-        c = thresh_colors[0]
-        for idx in range(len(thresh_colors)-1, 0, -1):
-            if fraction <= constants.THRESH_HEALTH[idx]:
-                c = thresh_colors[idx]
-                break
-        return c
-        
  
     def take_damage(self, attacker_name, attack_verb, weapon_name, attack_color, damage):
         if damage > 0 and self.hp > 0:
@@ -338,10 +323,33 @@ class Fighter:
         
         #heal by the given amount, without going over the maximum
         self.hp += amount
-        if self.owner == _dungeon.player:
-                self.set_health_color(constants.THRESH_COLORS)
         if self.hp > self.max_hp:
             self.hp = self.max_hp
+            
+"""
+Fighter that sets owners color based on health thresholds
+"""
+class Fighter_hpcolor(Fighter):
+    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None, health_colors=None):
+        Fighter.__init__(self, hp, defense, power, speed, death_function, weapon)
+        self.thresh_colors = health_colors
+    
+    def set_health_color(self):
+        fraction = (self.hp / self.max_hp)
+        self.owner.color = self.thresh_colors[0]
+        for idx in range(len(self.thresh_colors)-1, 0, -1):
+            if fraction <= constants.THRESH_HEALTH[idx]:
+                self.owner.color = self.thresh_colors[idx]
+                return
+            
+    def take_dmg_silent(self, damage):
+        Fighter.take_dmg_silent(self, damage)
+        self.set_health_color()
+        
+    def heal(self, amount):
+        Fighter.heal(self, amount)
+        self.set_health_color()
+                
 
 """
 Player GameObject
@@ -350,14 +358,14 @@ class Player(GameObject):
     def __init__(self, dungeon, x, y):
     
         #create object representing the player
-        fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
-                                    speed=constants.START_SPEED, death_function=self.death)
+        fighter_component = Fighter_hpcolor(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
+                                    speed=constants.START_SPEED, death_function=self.death, health_colors=constants.THRESH_COLORS)
                                     
         # make player color by health
-        def n_f(self, damage):
-            Fighter.take_dmg_silent(self, damage)
-            self.set_health_color(constants.THRESH_COLORS)
-        fighter_component.take_dmg_silent = types.MethodType(n_f, fighter_component)
+        # def n_f(self, damage):
+            # Fighter.take_dmg_silent(self, damage)
+            # self.set_health_color(constants.THRESH_COLORS)
+        # fighter_component.take_dmg_silent = types.MethodType(n_f, fighter_component)
         
         weapon = Weapon(min_dmg=4, max_dmg=7, speed=constants.START_ATK_SPEED, 
         attack_names=['claws','teeth'], 
@@ -554,28 +562,24 @@ class Bard(Scout):
         # now re-count enemies (since we've set our Fighter to None)
         _dungeon.count_enemies()
 
-
-
 """
-The Boss enemy (GameObject)
+Beowulf Boss game object!
 """
 class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
         bt_ai = Beowulf_NPC(dungeon)
-        # override coloring based on AI state
-        bt_ai.calc_color = lambda : None
         
-        bt_fighter = Fighter(hp=60, defense=4, power=16,
-            speed=8, death_function=self.death)
+        bt_fighter = Fighter_hpcolor(hp=60, defense=4, power=16,
+            speed=8, death_function=self.death, health_colors=constants.BEO_THRESH_COLORS)
             
         beo_color = colors.white
             
         # make beowfulf color by health as player
-        def n_f(self, damage):
-            Fighter.take_dmg_silent(self, damage)
-            self.set_health_color(constants.BEO_THRESH_COLORS)
-        bt_fighter.take_dmg_silent = types.MethodType(n_f, bt_fighter)
+        # def n_f(self, damage):
+            # Fighter.take_dmg_silent(self, damage)
+            # self.set_health_color(constants.BEO_THRESH_COLORS)
+        # bt_fighter.take_dmg_silent = types.MethodType(n_f, bt_fighter)
         
         weapon = Weapon(min_dmg=3, max_dmg=9, speed=6,
         attack_names=['strong limbs'], 
@@ -1334,13 +1338,13 @@ class NPC:
     def calc_color(self):
         c = colors.black
         if self.state == States.FIGHT:
-            c = colors.dark_orange
+            c = colors.orange
         if self.state == States.FLEE:
-            c = colors.light_orange
+            c = colors.dark_orange
         elif self.state == States.SLEEP:
-            c = colors.grey
+            c = colors.darkest_grey
         elif self.state == States.WANDER:
-            c = colors.light_grey
+            c = colors.darkest_orange
             
         return c
             
@@ -1902,6 +1906,10 @@ class Beowulf_NPC(NPC):
             self.last_attack_turn = _dungeon.ticks
                 
             return self.owner.fighter.attack_speed()
+            
+    # override coloring based on ai state
+    def calc_color(self):
+        return None
     
         
 

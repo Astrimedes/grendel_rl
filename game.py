@@ -295,8 +295,8 @@ class Game:
         
         # colors
         title_color = colors.dark_yellow
-        pads_color = colors.dark_grey
-        text_color = colors.darkest_yellow
+        pads_color = colors.white
+        text_color = colors.dark_yellow
     
         # draw text
         x = 0
@@ -433,7 +433,7 @@ class Game:
 
         #tdl.set_font('arial10x10.png', greyscale=True, altLayout=True)
         tdl.set_font('terminal16x16.png', greyscale=False)
-        self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title="Grendel", 
+        self.root_console = tdl.init(constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT, title=constants.TITLE, 
                         fullscreen=False)
         self.map_console = tdl.Console(constants.CAMERA_WIDTH, constants.CAMERA_HEIGHT)
         self.message_panel = tdl.Console(constants.MSG_PANEL_WIDTH, constants.MSG_PANEL_HEIGHT)

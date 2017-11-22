@@ -74,8 +74,8 @@ FOV_RADIUS_BAD = 5
 
 # launcher settings
 LIMIT_FPS = 20  #20 frames-per-second maximum
-TITLE = "Grendel's Last Stand"
-AUTHOR = 'Astrimedes'
+TITLE = "Grendel's Last Chance"
+AUTHOR = 'Mike Turano'
 
 # main menu image
 MENU_BACKGROUND = 'grendel.png'
