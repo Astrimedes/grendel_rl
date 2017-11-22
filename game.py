@@ -41,7 +41,7 @@ class Game:
         self.map_console = None
         self.root_console = None
         self.message_panel = None
-        self.status_panel = None        
+        self.status_panel = None
         
         self.state = None
         self.dungeon = None
@@ -281,6 +281,63 @@ class Game:
                 break         
                     
                
+               
+    def create_instr_console(self, min_width):
+        # define numpad/hjk text sizes
+        CTRLS_WIDTH = 5
+        CTRLS_HEIGHT = 5
+        SPACER_WIDTH = 4
+        
+        # create console
+        w = min_width
+        h = 15
+        instr_console = tdl.Console(w, h)
+        
+        # colors
+        title_color = colors.dark_yellow
+        pads_color = colors.dark_grey
+        text_color = colors.darkest_yellow
+    
+        # draw text
+        x = 0
+        y = 1
+        # numpad / hjk keys
+        title = 'Keyboard Controls'
+        title_center = (instr_console.width - len(title)) // 2
+        instr_console.draw_str(title_center, y, title, bg=None, fg=title_color)
+        y += 1
+        # numlock capslock
+        title = '(NUMLOCK on, CAPSLOCK off!)'
+        title_center = (instr_console.width - len(title)) // 2
+        instr_console.draw_str(title_center, y, title, bg=None, fg=text_color)
+        y += 2
+        # numpad
+        xoffset = (instr_console.width - ((CTRLS_WIDTH * 2)+SPACER_WIDTH)) // 2
+        for i in range(len(controls.strlines_numpad)):
+            instr_console.draw_str(x+xoffset, y+i, controls.strlines_numpad[i], bg=None, fg=pads_color)
+        # or...
+        instr_console.draw_str(x+CTRLS_WIDTH+xoffset, y+(CTRLS_HEIGHT//2), ' OR ', bg=None, fg=text_color)
+        # hjk
+        for i in range(len(controls.strlines_numpad)):
+            instr_console.draw_str(x+CTRLS_WIDTH+SPACER_WIDTH+xoffset, y+i, controls.strlines_hjk[i], bg=None, fg=pads_color)
+        # bump to fight
+        xoffset //= 2
+        y += CTRLS_HEIGHT + 1
+        title = '* Move into enemies to attack!'
+        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+        # g to pick up
+        y += 1
+        title = '* Press "g" to pick up items'
+        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+        # i for inventory
+        y += 1
+        title = '* Press "i" for inventory'
+        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+            
+        return instr_console
+    
+    
+        
      
     ### MAIN MENU ###
     def main_menu(self):
@@ -289,32 +346,40 @@ class Game:
         img_x = round((((constants.SCREEN_WIDTH * constants.TILE_SIZE)/2) - img.width) / 2 / constants.TILE_SIZE)
         img_y = 0
         
+        menu_width = 35
+        
+        # Title console
         title = constants.TITLE
-        
-        title_console = tdl.Console(len(title)+2, 3)
-        
+        title_console = tdl.Console(menu_width, 3)
+        # show the game's title, and some credits!
         title_center = (title_console.width - len(title)) // 2
-        
         author = 'By ' + constants.AUTHOR
         author_center = (title_console.width - len(author)) // 2
-        
         tconsole_x = (constants.SCREEN_WIDTH - title_console.width) // 2
         tconsole_y = 4
-     
+        # draw strings
+        title_console.draw_str(title_center, 0, title, bg=None, fg=colors.dark_yellow)
+        title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
+        
+        # create and fill instructions console
+        instr_console = self.create_instr_console(menu_width)
+        instr_x = (constants.SCREEN_WIDTH - instr_console.width) // 2
+        instr_y = constants.SCREEN_HEIGHT - instr_console.height - 1
+        
+        
+        # MAIN LOOP #
         while not tdl.event.is_window_closed():
         
             self.clear_all()
         
             #show the title image
-            
-            #img.blit(self.root_console, xcenter, ycenter, tcod.BKGND_SET, 0.25, 0.25, 0)
-            #img.blit_2x(self.root_console, img_x, img_y)
             img.blit(self.root_console, constants.SCREEN_WIDTH//2, constants.SCREEN_HEIGHT//2, tcod.BKGND_SET, 0.5, 0.5, 0)
             
-            #show the game's title, and some credits!
-            title_console.draw_str(title_center, 0, title, bg=None, fg=colors.dark_yellow)
-            title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
-            self.root_console.blit(title_console, tconsole_x, tconsole_y, title_console.width, title_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
+            # show the title and author
+            self.root_console.blit(title_console, tconsole_x, tconsole_y, title_console.width, title_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.9)
+            
+            # show the instructions
+            self.root_console.blit(instr_console, instr_x, instr_y, instr_console.width, instr_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.9)
             
             tdl.flush()
      
@@ -325,11 +390,14 @@ class Game:
             if save_exists:
                 LOAD = 1
                 EXIT = 2
-                choice = self.menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
+                choices = ['Play a new game', 'Continue last game', 'Quit']
             else:
                 LOAD = -999999
                 EXIT = 1
-                choice = self.menu('', ['Play a new game', 'Quit'], 24)            
+                choices = ['Play a new game', 'Quit']
+                
+            # show the menu!
+            choice = self.menu('', choices, menu_width, frame=True, framecolor=colors.dark_yellow)
      
             if choice == PLAY:
                 self.new_game()
@@ -339,7 +407,7 @@ class Game:
                     self.play_game()
                 else:
                     self.root_console.clear()
-                    c = self.menu('No saved game to load!', ['Start new game', 'Quit'], 24)
+                    c = self.menu('No saved game to load!', ['Start new game', 'Quit'], menu_width)
                     logging.debug('Chose %s', c)
                     if c == 0:
                         self.new_game()
@@ -411,28 +479,36 @@ class Game:
         
         
     ### MENU WITH INPUT ###
-    def menu(self, header, options, width, map_window=False, tcolor=colors.white, sleeptime=None):
+    def menu(self, header, options, width, map_window=False, tcolor=colors.white, sleeptime=None, frame=False, framecolor=None, fgalpha=1.0, bgalpha=0.8):
         if len(options) > 26:
             raise ValueError ('Cannot have a menu with more than 26 options.')
+            
+        x = 1
+        y = 1
+        height = 0
+        if frame:
+            width += 2
+            height += 2
+            x += 1
+            y += 1
      
         #calculate total height for the header (after textwrap) and one line per option
         header_wrapped = textwrap.wrap(header, width)
         header_height = len(header_wrapped)
         if header == '':
             header_height = 0
-        height = len(options) + header_height + 2
+        height += len(options) + header_height + 2
      
         #create an off-screen console that represents the menu's window
- 
         window = tdl.Console(width, height)
      
         #print the header, with wrapped text
-        window.draw_rect(0, 1, width, height, None, fg=tcolor, bg=None)
+        window.draw_rect(x, y, width, height, None, fg=tcolor, bg=None)
         for i, line in enumerate(header_wrapped):
-            window.draw_str(0, 1+i, header_wrapped[i], fg=tcolor)
+            window.draw_str(x, y+i, header_wrapped[i], fg=tcolor)
      
         #print all the options
-        y = header_height + 1
+        y += header_height
         letter_index = ord('a')
         c2 = (colors.lightest_grey, colors.lighter_grey)
         for idx, option_text in enumerate(options):
@@ -441,21 +517,28 @@ class Game:
                 c = c2[0]
             else:
                 c = c2[1]
-            window.draw_str(0, y, text, fg=c, bg=None)
+            window.draw_str(x, y, text, fg=c, bg=None)
             y += 1
             letter_index += 1
      
         #blit the contents of "window" to...
         # top of dungeon map window
         if map_window:
-            x = constants.STAT_PANEL_WIDTH+1
-            y = 0
+            x += constants.STAT_PANEL_WIDTH
+            y = 1
+            if frame:
+                y += 1
         # center of screen
         else:
             x = constants.SCREEN_WIDTH//2 - width//2
-            y = constants.SCREEN_HEIGHT//2 - height//2
+            y = constants.SCREEN_HEIGHT//2 - height
             
-        self.root_console.blit(window, x, y, width, height, 0, 0, fg_alpha=1.0, bg_alpha=0.7)
+        # draw frame on console
+        if frame:
+            window.draw_frame(0, 0, width, height, None, fg=None, bg=framecolor)
+            
+        # blit console
+        self.root_console.blit(window, x, y, width, height, 0, 0, fg_alpha=fgalpha, bg_alpha=bgalpha)
      
         #present the root_console console to the player and wait for a key-press
         tdl.flush()
@@ -799,7 +882,10 @@ class Game:
             # curr_bar_width = 0
         # else:
             # curr_bar_width = max(1, int((float(value)-minimum) / maximum * total_width))
-        curr_bar_width = max(int((float(value)) / maximum * total_width), minimum)
+        if value > 0:
+            curr_bar_width = max(int((float(value)) / maximum * total_width), minimum)
+        else:
+            curr_bar_width = 0
         
         # render any 'last health change'
         if self.dungeon.player.fighter.lhc_turns > 0:
@@ -819,7 +905,7 @@ class Game:
                 # dmg
                 else:
                     # indicate dmg amount
-                    c = colors.flame
+                    c = colors.light_flame
                     # guarantee diff
                     if bar_width == curr_bar_width:
                         bar_width += 1
@@ -1001,18 +1087,27 @@ class Game:
         self.status_panel.draw_str(x, y, self.dungeon.time_string, bg=None, fg=colors.light_grey)
         
         # draw inventory counts
-        # get dict of items (name: count)
-        item_dict = self.dungeon.get_inv_count_dict()
         y += 4
-        self.drawtitle_stats('Inventory', y, fgcolor=tcolor)
+        icolor = tcolor
+        if len(self.dungeon.inventory) < 1:
+            icolor = colors.dark_grey
+        # draw title
+        self.drawtitle_stats('Inventory', y, fgcolor=icolor)
         y += 1
-        self.drawtitle_stats('(press i to use)', y, fgcolor=colors.dark_grey)
-        for k in sorted(item_dict.keys()):
-            y += 1
-            line = k + ': ' + str(item_dict[k])
-            self.status_panel.draw_str(x, y, line, bg=None, fg=colors.light_grey)
-        if len(item_dict) < 5:
-            y += 5 - len(item_dict)
+        # inventory body
+        if len(self.dungeon.inventory) > 0:
+            # instructions if qty > 0
+            self.drawtitle_stats('(press i to use)', y, fgcolor=colors.dark_grey)
+            # get dict of items (name: count)
+            item_dict = self.dungeon.get_inv_count_dict()
+            for k in sorted(item_dict.keys()):
+                y += 1
+                line = k + ': ' + str(item_dict[k])
+                self.status_panel.draw_str(x, y, line, bg=None, fg=colors.light_grey)
+            if len(item_dict) < 5:
+                y += 5 - len(item_dict)
+        else:
+            y += 5
         
         #show player stats
         y += 2
@@ -1020,7 +1115,7 @@ class Game:
         #show player's hp bar
         y += 1
         self.render_bar(x, y, constants.STAT_PANEL_WIDTH-2, 'HP', self.dungeon.player.fighter.hp, 1, self.dungeon.player.fighter.max_hp,
-            self.dungeon.player.fighter.get_health_color(), colors.darkest_red)
+            self.dungeon.player.color, colors.darkest_red)
         
         # show character stats
         pfighter = self.dungeon.player.fighter

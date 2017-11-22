@@ -106,6 +106,7 @@ color_dead = colors.dark_crimson
 # health 'thresholds'
 THRESH_HEALTH = (1, 0.66, 0.33)
 THRESH_COLORS = (colors.darkest_green, colors.dark_yellow, colors.dark_red)
+BEO_THRESH_COLORS = (colors.white, colors.dark_yellow, colors.dark_red)
 
 
 # INPUT

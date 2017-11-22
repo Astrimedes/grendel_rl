@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # This game started from the excellent python roguelike tutorial at: http://www.roguebasin.com/index.php?title=Roguelike_Tutorial,_using_python3%2Btdl #
 
+import types
+
 import tcod
 import tdl
 
@@ -227,7 +229,7 @@ A creature's combat representation: hp, power, attack, take_dmg etc
 """
 class Fighter:
     #combat-related properties and methods (monster, player, NPC).
-    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None):
+    def __init__(self, hp, defense, power, speed=16, death_function=None, weapon=None, health_colors=None):
         self.max_hp = hp
         self.hp = hp
         self.defense = defense
@@ -256,17 +258,17 @@ class Fighter:
         if self.lhc_turns > 0:
             self.lhc_turns -= 1
             
-    def set_health_color(self):
+    def set_health_color(self, thresh_colors):
         # set color according to health
         if not self.died:
-            self.owner.color = self.get_health_color()
+            self.owner.color = self.get_health_color(thresh_colors)
                     
-    def get_health_color(self):
+    def get_health_color(self, thresh_colors):
         fraction = (self.hp / self.max_hp)
-        c = constants.THRESH_COLORS[0]
-        for idx in range(len(constants.THRESH_COLORS)-1, 0, -1):
+        c = thresh_colors[0]
+        for idx in range(len(thresh_colors)-1, 0, -1):
             if fraction <= constants.THRESH_HEALTH[idx]:
-                c = constants.THRESH_COLORS[idx]
+                c = thresh_colors[idx]
                 break
         return c
         
@@ -285,9 +287,6 @@ class Fighter:
             _dungeon.game.message(msg, attack_color)
                   
             self.take_dmg_silent(damage)
-            
-            if self.owner == _dungeon.player:
-                self.set_health_color()
             
     def take_dmg_silent(self, damage):
         self.last_health_change = -damage
@@ -340,7 +339,7 @@ class Fighter:
         #heal by the given amount, without going over the maximum
         self.hp += amount
         if self.owner == _dungeon.player:
-                self.set_health_color()
+                self.set_health_color(constants.THRESH_COLORS)
         if self.hp > self.max_hp:
             self.hp = self.max_hp
 
@@ -353,6 +352,12 @@ class Player(GameObject):
         #create object representing the player
         fighter_component = Fighter(hp=50, defense=constants.START_DEFENSE, power=constants.START_POWER, 
                                     speed=constants.START_SPEED, death_function=self.death)
+                                    
+        # make player color by health
+        def n_f(self, damage):
+            Fighter.take_dmg_silent(self, damage)
+            self.set_health_color(constants.THRESH_COLORS)
+        fighter_component.take_dmg_silent = types.MethodType(n_f, fighter_component)
         
         weapon = Weapon(min_dmg=4, max_dmg=7, speed=constants.START_ATK_SPEED, 
         attack_names=['claws','teeth'], 
@@ -558,21 +563,31 @@ class Beowulf(Scout):
     #Boss monster GameObject
     def __init__(self, dungeon, x, y):
         bt_ai = Beowulf_NPC(dungeon)
+        # override coloring based on AI state
+        bt_ai.calc_color = lambda : None
         
         bt_fighter = Fighter(hp=60, defense=4, power=16,
             speed=8, death_function=self.death)
+            
+        beo_color = colors.white
+            
+        # make beowfulf color by health as player
+        def n_f(self, damage):
+            Fighter.take_dmg_silent(self, damage)
+            self.set_health_color(constants.BEO_THRESH_COLORS)
+        bt_fighter.take_dmg_silent = types.MethodType(n_f, bt_fighter)
         
         weapon = Weapon(min_dmg=3, max_dmg=9, speed=6,
         attack_names=['strong limbs'], 
         attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)
         
-        bt_fighter.weapon = weapon
+        bt_fighter.weapon = weapon        
         
         # objects that drop upon death
         self.drop_objects = []
         
-        GameObject.__init__(self, dungeon, x, y, 'B', 'Beowulf the Mighty', colors.white, blocks=True, 
+        GameObject.__init__(self, dungeon, x, y, 'B', 'Beowulf the Mighty', beo_color, blocks=True, 
                  fighter=bt_fighter, ai=bt_ai, item=None)
                  
                  
@@ -895,8 +910,8 @@ class Dungeon:
                 
                 
     def place_objects_gen(self, room, num_monsters):   
-        # don't place monster in room with player
-        if room.rtype == AreaTypes.PLAYER:
+        # don't place monster in room with player, prefer rooms with 'obstacles'
+        if room.rtype == AreaTypes.PLAYER or not(room.obstacles or randint(0,2) == 2):
             return
     
         # room = (x, y, w, h)
@@ -1297,7 +1312,9 @@ class NPC:
         self.state_turns += 1
         
         # set color by state
-        self.owner.color = self.calc_color()
+        color = self.calc_color()
+        if color:
+            self.owner.color = color
         
         if self.state == States.SLEEP:
             return self.take_sleep()
@@ -1321,9 +1338,9 @@ class NPC:
         if self.state == States.FLEE:
             c = colors.light_orange
         elif self.state == States.SLEEP:
-            c = colors.darkest_grey
+            c = colors.grey
         elif self.state == States.WANDER:
-            c = colors.dark_grey
+            c = colors.light_grey
             
         return c
             

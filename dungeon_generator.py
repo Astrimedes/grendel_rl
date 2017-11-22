@@ -29,10 +29,10 @@ dark_wall = (31,31,31) #darkest_grey
 
 light_obstacle = (102,81,49)
 
-light_boss_floor = (98,100,32)
-dark_boss_floor = (26,21,45)
-light_boss_wall = (61,52,107)
-dark_boss_wall =  (31,0,61)
+light_boss_floor = (79,108,107)
+light_boss_wall = (62,48,65)
+dark_boss_floor = (0,31,32)
+dark_boss_wall =  (24,19,26)
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

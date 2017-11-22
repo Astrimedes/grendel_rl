@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 
-# y k u
-#  \|/
-# h-.-l
-#  /|\
-# b j n
 
-# 7 8 9
-#  \|/
-# 4-5-6
-#  /|\
-# 1 2 3
-
+"""
+Capturing Input
+"""
 _upleft = ['KP7', 'y']
 _up = ['KP8', 'k']
 _upright = ['KP9', 'u']
@@ -58,3 +50,25 @@ def inventory(user_input):
     
 def drop(user_input):
     return user_input.type == 'KEYDOWN' and user_input.text == 'd'
+    
+    
+"""
+Displaying information
+"""
+# y k u
+#  \|/ 
+# h-.-l
+#  /|\ 
+# b j n
+
+# 7 8 9
+#  \|/
+# 4-5-6
+#  /|\
+# 1 2 3
+
+strlines_hjk = ['y k u',' \|/ ','h-.-l',' /|\ ', 'b j n']
+
+strlines_numpad = ['7 8 9',' \|/ ','4-5-6',' /|\ ','1 2 3']
+
+    
