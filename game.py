@@ -290,7 +290,7 @@ class Game:
         
         # create console
         w = min_width
-        h = 15
+        h = 14
         instr_console = tdl.Console(w, h)
         
         # colors
@@ -321,18 +321,17 @@ class Game:
         for i in range(len(controls.strlines_numpad)):
             instr_console.draw_str(x+CTRLS_WIDTH+SPACER_WIDTH+xoffset, y+i, controls.strlines_hjk[i], bg=None, fg=pads_color)
         # bump to fight
-        xoffset //= 2
         y += CTRLS_HEIGHT + 1
         title = '* Move into enemies to attack!'
-        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+        instr_console.draw_str(title_center, y, title, bg=None, fg=text_color)
         # g to pick up
         y += 1
         title = '* Press "g" to pick up items'
-        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+        instr_console.draw_str(title_center, y, title, bg=None, fg=text_color)
         # i for inventory
         y += 1
         title = '* Press "i" for inventory'
-        instr_console.draw_str(x+xoffset, y, title, bg=None, fg=text_color)
+        instr_console.draw_str(title_center, y, title, bg=None, fg=text_color)
             
         return instr_console
     
@@ -346,26 +345,31 @@ class Game:
         img_x = round((((constants.SCREEN_WIDTH * constants.TILE_SIZE)/2) - img.width) / 2 / constants.TILE_SIZE)
         img_y = 0
         
-        menu_width = 35
+        menu_width = 34
         
         # Title console
         title = constants.TITLE
-        title_console = tdl.Console(menu_width, 3)
+        title_console = tdl.Console(menu_width+2, 5)
         # show the game's title, and some credits!
         title_center = (title_console.width - len(title)) // 2
         author = 'By ' + constants.AUTHOR
         author_center = (title_console.width - len(author)) // 2
         tconsole_x = (constants.SCREEN_WIDTH - title_console.width) // 2
-        tconsole_y = 4
+        tconsole_y = 2
+        # draw frame
+        title_console.draw_frame(0, 0, title_console.width, title_console.height, None, fg=None, bg=colors.dark_yellow)
         # draw strings
-        title_console.draw_str(title_center, 0, title, bg=None, fg=colors.dark_yellow)
-        title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
+        title_console.draw_str(title_center, tconsole_y, title, bg=None, fg=colors.dark_green)
+        # decide y position on root
+        # position title console
+        tconsole_y = constants.SCREEN_HEIGHT // 6
+        
+        #title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
         
         # create and fill instructions console
         instr_console = self.create_instr_console(menu_width)
         instr_x = (constants.SCREEN_WIDTH - instr_console.width) // 2
-        instr_y = constants.SCREEN_HEIGHT - instr_console.height - 1
-        
+        instr_y = constants.SCREEN_HEIGHT - instr_console.height - 6        
         
         # MAIN LOOP #
         while not tdl.event.is_window_closed():
