@@ -581,7 +581,7 @@ class Beowulf(Scout):
             # self.set_health_color(constants.BEO_THRESH_COLORS)
         # bt_fighter.take_dmg_silent = types.MethodType(n_f, bt_fighter)
         
-        weapon = Weapon(min_dmg=3, max_dmg=9, speed=6,
+        weapon = Weapon(min_dmg=3, max_dmg=9, speed=5,
         attack_names=['strong limbs'], 
         attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)
