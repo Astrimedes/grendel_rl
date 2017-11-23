@@ -571,7 +571,7 @@ class Beowulf(Scout):
         bt_ai = Beowulf_NPC(dungeon)
         
         bt_fighter = Fighter_hpcolor(hp=60, defense=4, power=16,
-            speed=8, death_function=self.death, health_colors=constants.BEO_THRESH_COLORS)
+            speed=6, death_function=self.death, health_colors=constants.BEO_THRESH_COLORS)
             
         beo_color = colors.white
             
@@ -581,7 +581,7 @@ class Beowulf(Scout):
             # self.set_health_color(constants.BEO_THRESH_COLORS)
         # bt_fighter.take_dmg_silent = types.MethodType(n_f, bt_fighter)
         
-        weapon = Weapon(min_dmg=3, max_dmg=9, speed=5,
+        weapon = Weapon(min_dmg=4, max_dmg=10, speed=5,
         attack_names=['strong limbs'], 
         attack_verbs=['bruise', 'grapple', 'squeeze'], 
         map_char = 'w', map_color = colors.white)

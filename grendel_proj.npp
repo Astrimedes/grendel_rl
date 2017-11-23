@@ -1,0 +1,24 @@
+<NotepadPlus>
+    <Project name="Grendel Roguelike">
+        <Folder name="Source Files">
+            <File name="barbarian_names.py" />
+            <File name="colors.py" />
+            <File name="constants.py" />
+            <File name="controls.py" />
+            <File name="dungen_examples.log" />
+            <File name="dungen_test.log" />
+            <File name="dungeon.py" />
+            <File name="dungeon_generator.py" />
+            <File name="enumerations.py" />
+            <File name="game.py" />
+            <File name="grendel.jpg" />
+            <File name="grendel.png" />
+            <File name="grendel_cut.png" />
+            <File name="grendel_orig.jpg" />
+            <File name="main.py" />
+            <File name="README.md" />
+            <File name="strutil.py" />
+            <File name="test_map_gen.py" />
+        </Folder>
+    </Project>
+</NotepadPlus>
