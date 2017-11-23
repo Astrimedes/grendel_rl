@@ -2047,9 +2047,8 @@ def try_penalty(penalty1, penalty2, penalty3):
     pen()
         
 
-### CAST SPELLS ###
+### HEALING ###
 def cast_heal():
-    #logging.info('casting heal...')
 
     #heal the player
     if _dungeon.player.fighter.hp == _dungeon.player.fighter.max_hp:
@@ -2060,65 +2059,6 @@ def cast_heal():
     _dungeon.player.fighter.heal(constants.HEAL_AMOUNT)
     
     return True
-    
-def cast_lightning(caster_gameobj=None):
-    #logging.info('casting lightning...')
-    
-    if not caster_gameobj:
-        caster_gameobj = _dungeon.player
-        
-    #find closest enemy (inside a maximum range) and damage it
-    monster = _dungeon.closest_monster(caster_gameobj, constants.LIGHTNING_RANGE)
-    if monster is None:  #no enemy found within maximum range
-        _dungeon.game.message('No enemy is close enough to strike.', colors.red)
-        return False
- 
-    #zap it!
-    _dungeon.game.message('A lighting bolt arcs towards the ' + monster.name + ' with a loud thunder!', 
-            colors.light_blue)
- 
-    monster.fighter.take_damage('Magical lightning', choice(['strikes', 'zaps', 'fries']), 'electricity', colors.light_blue, constants.LIGHTNING_DAMAGE)
- 
-    return True
-    
-# def cast_confuse():
-    # #ask the player for a target to confuse
-    # _dungeon.game.message('Left-click an enemy to confuse it, or right-click to cancel.', 
-            # colors.light_cyan)
-    # monster = _dungeon.game.target_monster(constants.CONFUSE_RANGE)
-    # if monster is None:
-        # _dungeon.game.message('Cancelled')
-        # return 'cancelled'
- 
-    # #replace the monster's AI with a "confused" one; after some turns it will 
-    # #restore the old AI
-    # old_ai = monster.ai
-    # monster.ai = ConfusedMonster(old_ai)
-    # monster.ai.owner = monster  #tell the new component who owns it
-    # _dungeon.game.message('The eyes of the ' + monster.name + ' look vacant, as he starts to ' +
-            # 'stumble around!', colors.light_green)
- 
-def cast_fireball():
-    #logging.info('casting fireball...')
-
-    #ask the player for a target tile to throw a fireball at
-    _dungeon.game.message('Left-click a target tile for the fireball, or right-click to ' +
-            'cancel.', colors.light_cyan)
- 
-    (x, y) = _dungeon.game.target_tile(max_range=None, target_size=3)
-    
-    if x is None: 
-        _dungeon.game.message('Cancelled')
-        return False
-    _dungeon.game.message('The fireball explodes, burning everything within ' + 
-            str(constants.FIREBALL_RADIUS) + ' tiles!', colors.orange)
- 
-    for obj in _dungeon.objects:  #damage every fighter in range, including the player
-        if _dungeon.distance(obj.x, obj.y, x, y) <= constants.FIREBALL_RADIUS and obj.fighter:
-            obj.fighter.take_damage('Magical fire', choice(['burns', 'sears', 'incinerates']), choice(['flame', 'heat', 'blast']), colors.orange, constants.FIREBALL_DAMAGE)
-            
-    return True
-    
     
 """
 Randomly rotate a point (x,y) within a set of clockface 'positions'
