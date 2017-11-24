@@ -69,7 +69,7 @@ class Game:
             for obj in self.dungeon.objects:
                 obj.dungeon = None
             
-            #open a new empty shelve (possibly overwriting an old one) to write the game data
+            # open a new empty shelve (possibly overwriting an old one) to write the game data
             with shelve.open('savegame', 'n') as savefile:
                 savefile['map'] = self.dungeon.map
                 savefile['objects'] = self.dungeon.objects
@@ -111,7 +111,7 @@ class Game:
             return False
      
     def load_game(self):
-        #open the previously saved shelve and load the game data
+        # open the previously saved shelve and load the game data
         
         self.root_console.clear()
         
@@ -362,14 +362,17 @@ class Game:
         title_console.draw_str(title_center, tconsole_y, title, bg=None, fg=colors.dark_green)
         # decide y position on root
         # position title console
-        tconsole_y = constants.SCREEN_HEIGHT // 6
+        tconsole_y = 8
+        
+        # y pos of menu console on root
+        mconsole_y = tconsole_y + 6
         
         #title_console.draw_str(author_center, 2, author, bg=None, fg=colors.darker_green)
         
         # create and fill instructions console
         instr_console = self.create_instr_console(menu_width)
         instr_x = (constants.SCREEN_WIDTH - instr_console.width) // 2
-        instr_y = constants.SCREEN_HEIGHT - instr_console.height - 6        
+        instr_y = tconsole_y + 13       
         
         # MAIN LOOP #
         while not tdl.event.is_window_closed():
@@ -382,26 +385,29 @@ class Game:
             # show the title and author
             self.root_console.blit(title_console, tconsole_x, tconsole_y, title_console.width, title_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.9)
             
-            # show the instructions
-            self.root_console.blit(instr_console, instr_x, instr_y, instr_console.width, instr_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.9)
-            
-            tdl.flush()
-     
             #show options and wait for the player's choice
-            
             save_exists = self.savegame_exists()
             PLAY = 0
             if save_exists:
                 LOAD = 1
                 EXIT = 2
                 choices = ['Play a new game', 'Continue last game', 'Quit']
+                y_instr = instr_y + 1 
             else:
                 LOAD = -999999
                 EXIT = 1
                 choices = ['Play a new game', 'Quit']
+                y_instr = instr_y
+            
+            # show the instructions
+            self.root_console.blit(instr_console, instr_x, y_instr, instr_console.width, instr_console.height, 0, 0, fg_alpha=1.0, bg_alpha=0.9)
+            
+            tdl.flush()
+     
+            
                 
             # show the menu!
-            choice = self.menu('', choices, menu_width, frame=True, framecolor=colors.dark_yellow)
+            choice = self.menu('', choices, menu_width, frame=True, ypos=mconsole_y, framecolor=colors.dark_yellow)
      
             if choice == PLAY:
                 self.new_game()
@@ -483,7 +489,7 @@ class Game:
         
         
     ### MENU WITH INPUT ###
-    def menu(self, header, options, width, map_window=False, tcolor=colors.white, sleeptime=None, frame=False, framecolor=None, fgalpha=1.0, bgalpha=0.8):
+    def menu(self, header, options, width, map_window=False, tcolor=colors.white, sleeptime=None, frame=False, framecolor=None, xpos=None, ypos=None, fgalpha=1.0, bgalpha=0.8):
         if len(options) > 26:
             raise ValueError ('Cannot have a menu with more than 26 options.')
             
@@ -534,14 +540,20 @@ class Game:
                 y += 1
         # center of screen
         else:
-            x = constants.SCREEN_WIDTH//2 - width//2
-            y = constants.SCREEN_HEIGHT//2 - height
+            if xpos is None:
+                x = constants.SCREEN_WIDTH//2 - width//2
+            else:
+                x = xpos
+            if ypos is None:
+                y = constants.SCREEN_HEIGHT//2 - height
+            else:
+                y = ypos
             
         # draw frame on console
         if frame:
             window.draw_frame(0, 0, width, height, None, fg=None, bg=framecolor)
             
-        # blit console
+        # blit console to root!
         self.root_console.blit(window, x, y, width, height, 0, 0, fg_alpha=fgalpha, bg_alpha=bgalpha)
      
         #present the root_console console to the player and wait for a key-press
